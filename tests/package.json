@@ -1,0 +1,16 @@
+{
+  "name": "itube-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Layout/functional test pipeline for the Flyt userscript. Own package.json — the root repo has no build system and stays that way.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node run.js",
+    "test:update": "node run.js --update",
+    "test:visual": "node run.js --check=snapshot",
+    "test:selftest": "node run.js --selftest"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}

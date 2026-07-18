@@ -1,0 +1,8 @@
+.claude/
+.ide/
+tests/node_modules/
+tests/artifacts/
+
+# Local-only working notes (not part of the published project)
+PLAN.md
+docs/script-split-analysis.md

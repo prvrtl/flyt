@@ -1,0 +1,39 @@
+{
+  "geometry": {
+    ".sidebar": {
+      "x": 0,
+      "y": 0,
+      "w": 232,
+      "h": 900
+    },
+    ".sidebar-head": {
+      "x": 12,
+      "y": 16,
+      "w": 212,
+      "h": 148
+    },
+    ".content": {
+      "x": 232,
+      "y": 0,
+      "w": 1208,
+      "h": 900
+    },
+    ".row:first-child": {
+      "x": 248,
+      "y": 128,
+      "w": 1176
+    },
+    ".row:first-child .row-thumb": {
+      "x": 256,
+      "y": 136,
+      "w": 248,
+      "h": 140
+    }
+  },
+  "counts": {
+    "c": 0,
+    "row": 14,
+    "rc": 0,
+    "commentRow": 0
+  }
+}
