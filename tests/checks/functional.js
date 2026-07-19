@@ -3451,6 +3451,54 @@ async function checkRailAlignment(browser) {
   return violations;
 }
 
+// Pages outside Flyt's scope (/account, settings, etc.) must open in YouTube's
+// native UI, not be intercepted into Flyt's "not available" placeholder. So a
+// link to a native route must do a full navigation, not an SPA route.
+async function checkNativeRoutePassthrough(browser) {
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/');
+  const violations = [];
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.evaluate(() => {
+      const a = document.createElement('a');
+      a.href = '/account';
+      a.id = 'flyt-native-test-link';
+      a.textContent = 'account';
+      (document.querySelector('#itube .content') || document.querySelector('#itube') || document.body).appendChild(a);
+    });
+    let navigated = false;
+    try {
+      await Promise.all([
+        page.waitForNavigation({ timeout: 7000 }),
+        page.click('#flyt-native-test-link'),
+      ]);
+      navigated = true;
+    } catch (e) {
+      navigated = false;
+    }
+    if (!navigated) {
+      violations.push({ check: 'native-route-passthrough', detail: 'clicking a /account link was intercepted (SPA) instead of doing a full native navigation — native pages must fall through to YouTube' });
+    } else {
+      // The bug is being intercepted into Flyt's placeholder while STILL on
+      // youtube.com/account. (Logged out, /account redirects to Google sign-in
+      // and leaves youtube.com entirely — where a real userscript's @match
+      // wouldn't run Flyt at all; the test harness injects everywhere, so only
+      // flag the case that's genuinely wrong.)
+      const stuckOnPlaceholder = await page.evaluate(() =>
+        location.hostname.endsWith('youtube.com') && location.pathname.startsWith('/account') && !!document.querySelector('#itube .unhandled')
+      ).catch(() => false);
+      if (stuckOnPlaceholder) {
+        violations.push({ check: 'native-route-passthrough', detail: 'a native /account route rendered Flyt\'s "not available" placeholder instead of native YouTube' });
+      }
+    }
+  } finally {
+    await page.close().catch(() => {});
+    await context.close();
+  }
+  return violations;
+}
+
 // The Settings panel is the hero feature of the accent-color refactor: this
 // check exists to catch the case where the CSS variable plumbing (--accent /
 // --accent-rgb) silently stops reaching the elements that are supposed to
@@ -6285,6 +6333,7 @@ module.exports = {
   checkAudioOnly,
   checkAccountMenu,
   checkRailAlignment,
+  checkNativeRoutePassthrough,
   checkSettings,
   checkCommandPalette,
   checkHoverStates,

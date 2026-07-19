@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.11
+// @version      0.0.12
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -69,6 +69,18 @@
       document.body.appendChild(b);
     };
     mountReenable();
+    return;
+  }
+
+  const NATIVE_ROUTE_RE = /^\/(account|paid_memberships|reporthistory|purchases|signin|logout|upload|create_channel|redirect)(?:[_/]|$)/;
+  if (NATIVE_ROUTE_RE.test(location.pathname)) {
+    // Outside Flyt's scope: leave YouTube's native UI in place, but the moment
+    // a navigation leaves that scope (e.g. opening a video), reload so Flyt
+    // boots on the new route — a Flyt-scope page must never render in the
+    // original UI.
+    const reloadIfLeftNativeScope = () => { if (!NATIVE_ROUTE_RE.test(location.pathname)) location.reload(); };
+    window.addEventListener('yt-navigate-finish', reloadIfLeftNativeScope);
+    window.addEventListener('popstate', reloadIfLeftNativeScope);
     return;
   }
 
@@ -10181,8 +10193,6 @@
     document.title = name ? name + ' — Flyt' : 'Flyt';
   };
 
-  const NATIVE_NAV_RE = /^\/(redirect|signin|logout|upload|create_channel)(\/|$)/;
-
   const routeInfo = (path, search) => {
     const permalink = path.match(/^\/(?:shorts|live)\/([^/?]+)/);
     if (permalink) return { type: 'shorts', shortsId: permalink[1] };
@@ -10224,6 +10234,7 @@
   const route = () => {
     const isPop = popNav;
     popNav = false;
+    if (NATIVE_ROUTE_RE.test(location.pathname)) { location.reload(); return; }
     stripTrackingParams();
     renderGuideChannels();
     syncAccount();
@@ -10336,7 +10347,7 @@
     const a = e.target.closest('a');
     if (!a || a.target === '_blank') return;
     if (a.origin !== location.origin) return;
-    if (NATIVE_NAV_RE.test(a.pathname)) return;
+    if (NATIVE_ROUTE_RE.test(a.pathname)) return;
     if (a.hasAttribute('download')) return;
     if (a.pathname === '/watch') {
       const videoId = new URLSearchParams(a.search).get('v');
