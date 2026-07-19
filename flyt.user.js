@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.7
+// @version      0.0.8
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -1490,14 +1490,18 @@
       height: 34px;
       padding: 0 14px;
       background: var(--surface);
-      border: 1px solid var(--hairline);
+      border: 1px solid transparent;
       border-radius: var(--r-pill);
       color: var(--text);
       font: 500 13px -apple-system, system-ui, sans-serif;
       cursor: pointer;
+      transition: background var(--tr);
+    }
+    #itube .watch-action-btn svg {
+      color: var(--muted);
     }
     #itube .watch-action-btn:hover {
-      background: rgba(255, 255, 255, .08);
+      background: var(--hover);
     }
     #itube .watch-action-btn:disabled {
       opacity: .4;
@@ -1628,7 +1632,7 @@
       min-width: 0;
       height: 34px;
       background: var(--surface);
-      border: 1px solid var(--hairline);
+      border: 1px solid transparent;
       border-radius: var(--r-pill);
       overflow: hidden;
     }
@@ -1659,11 +1663,9 @@
       width: 15px;
       height: 15px;
     }
-    #itube .watch-like-btn svg {
-      color: #3dff6e;
-    }
+    #itube .watch-like-btn svg,
     #itube .watch-dislike-btn svg {
-      color: #ff4d55;
+      color: var(--muted);
     }
     #itube .watch-like-btn.active {
       background: rgba(var(--accent-rgb), .16);
