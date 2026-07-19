@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.5
+// @version      0.0.6
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -10190,9 +10190,23 @@
     currentKey = keyFor(info.type, location.pathname, location.search);
   };
 
+  const TRACKING_PARAMS = new Set(['si', 'feature', 'pp', 'gclid', 'dclid', 'fbclid', 'ved', 'usg']);
+  const stripTrackingParams = () => {
+    if (!location.search || location.search === '?') return;
+    const params = new URLSearchParams(location.search);
+    let changed = false;
+    for (const key of [...params.keys()]) {
+      if (TRACKING_PARAMS.has(key) || key.startsWith('utm_')) { params.delete(key); changed = true; }
+    }
+    if (!changed) return;
+    const qs = params.toString();
+    history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  };
+
   const route = () => {
     const isPop = popNav;
     popNav = false;
+    stripTrackingParams();
     renderGuideChannels();
     syncAccount();
     const path = location.pathname;

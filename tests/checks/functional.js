@@ -998,6 +998,34 @@ async function checkLiveRedirect(context, videoId) {
   return violations;
 }
 
+// Privacy: tracking params (?si=, ?utm_*=, ?feature=, ?pp=) must be scrubbed
+// from the address bar on navigation, while functional params (v, t, list) are
+// preserved.
+async function checkTrackingParamsStripped(context, videoId) {
+  const { page } = await openPage(context, `https://www.youtube.com/watch?v=${videoId}&si=TrackMe123&utm_source=newsletter&feature=share&t=30`);
+  const violations = [];
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() => !new URLSearchParams(location.search).has('si'), { timeout: 8000 }).catch(() => {});
+    const q = await page.evaluate(() => {
+      const p = new URLSearchParams(location.search);
+      return { v: p.get('v'), t: p.get('t'), si: p.has('si'), utm: p.has('utm_source'), feature: p.has('feature') };
+    });
+    if (q.si || q.utm || q.feature) {
+      violations.push({ check: 'tracking-params-stripped', detail: `expected si/utm_source/feature removed from URL, got si=${q.si} utm=${q.utm} feature=${q.feature}` });
+    }
+    if (q.v !== videoId) {
+      violations.push({ check: 'tracking-params-stripped', detail: `expected functional ?v=${videoId} preserved, got "${q.v}"` });
+    }
+    if (q.t !== '30') {
+      violations.push({ check: 'tracking-params-stripped', detail: `expected functional ?t=30 (start time) preserved, got "${q.t}"` });
+    }
+  } finally {
+    await page.close();
+  }
+  return violations;
+}
+
 // Infinite scroll: the sentinel at the bottom of a list must load more items.
 // `.content` is the scroll container (the document itself doesn't scroll), so
 // scrolling the window would silently do nothing and the check would pass on
@@ -6159,6 +6187,7 @@ module.exports = {
   checkFeedToWatchNavigation,
   checkShortsRedirect,
   checkLiveRedirect,
+  checkTrackingParamsStripped,
   checkInfiniteScroll,
   checkUnhandledPage,
   checkUnhandledLinkRouting,
