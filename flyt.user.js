@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.3
+// @version      0.0.4
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -2858,6 +2858,9 @@
         justify-content: center;
         padding: 4px 0;
       }
+      #itube .nav-subs {
+        display: none;
+      }
     }
     @media (max-width: 600px) {
       #itube .rail-search-btn,
@@ -2890,6 +2893,8 @@
       }
       #itube .sidebar-logo-row {
         flex: none;
+        flex-direction: row;
+        align-items: center;
       }
       #itube .search-wrap {
         display: block;
@@ -7818,7 +7823,17 @@
       let open = false;
       const position = () => {
         const r = btn.getBoundingClientRect();
-        menu.style.top = Math.round(r.bottom + 6) + 'px';
+        const gap = 6;
+        const mh = menu.offsetHeight || 0;
+        const spaceBelow = window.innerHeight - r.bottom;
+        // Open upward when the menu would overflow the bottom edge and there's
+        // more room above (e.g. the Tools menus anchored to the player bar,
+        // which sits near the bottom of the viewport).
+        const openUp = mh + gap > spaceBelow - 8 && r.top > spaceBelow;
+        menu.style.bottom = 'auto';
+        menu.style.top = openUp
+          ? Math.max(8, Math.round(r.top - gap - mh)) + 'px'
+          : Math.round(r.bottom + gap) + 'px';
         let left = Math.round(r.left);
         const w = menu.offsetWidth || 160;
         if (left + w > window.innerWidth - 8) left = window.innerWidth - 8 - w;
@@ -7841,7 +7856,7 @@
         if (supportsPopover) { try { menu.showPopover(); } catch (e) {} }
         menu.classList.add('open');
         btn.setAttribute('aria-expanded', 'true');
-        if (!supportsAnchor) position();
+        position();
         const items = menuItems();
         if (items.length) items[0].focus();
       };
@@ -7862,7 +7877,7 @@
         menu.classList.toggle('open', open);
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (open) {
-          if (!supportsAnchor) position();
+          position();
           const items = menuItems();
           if (items.length) items[0].focus();
         }
