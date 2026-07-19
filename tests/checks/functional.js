@@ -1026,6 +1026,42 @@ async function checkTrackingParamsStripped(context, videoId) {
   return violations;
 }
 
+// Card titles must RESERVE two lines (not just clamp to a max of two), so
+// one-line and two-line titles produce equal-height cards and the grid rows
+// don't go ragged (uneven vertical gaps between rows).
+async function checkCardTitleHeight(context) {
+  const { page } = await openPage(context, 'https://www.youtube.com/@mkbhd/videos');
+  const violations = [];
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube .c-title', { timeout: 20000 }).catch(() => {});
+    const r = await page.evaluate(() => {
+      const els = Array.from(document.querySelectorAll('#itube .c-title'));
+      if (!els.length) return { count: 0 };
+      const cs = getComputedStyle(els[0]);
+      const heights = els.slice(0, 15).map((e) => Math.round(e.getBoundingClientRect().height));
+      return { count: els.length, minHeight: parseFloat(cs.minHeight) || 0, lineClamp: cs.webkitLineClamp, heights };
+    });
+    if (!r.count) {
+      violations.push({ check: 'card-title-height', detail: 'no .c-title cards rendered to verify' });
+      return violations;
+    }
+    if (!(r.minHeight >= 34)) {
+      violations.push({ check: 'card-title-height', detail: `expected .c-title to reserve ~2 lines (computed min-height >= 34px) so cards stay uniform; got ${r.minHeight}px` });
+    }
+    if (r.lineClamp !== '2') {
+      violations.push({ check: 'card-title-height', detail: `expected .c-title to still clamp at 2 lines, got line-clamp "${r.lineClamp}"` });
+    }
+    const spread = Math.max(...r.heights) - Math.min(...r.heights);
+    if (spread > 4) {
+      violations.push({ check: 'card-title-height', detail: `expected uniform card-title heights (reserved 2 lines), got a ${spread}px spread across ${r.heights.length} cards: ${r.heights.join(',')}` });
+    }
+  } finally {
+    await page.close();
+  }
+  return violations;
+}
+
 // Infinite scroll: the sentinel at the bottom of a list must load more items.
 // `.content` is the scroll container (the document itself doesn't scroll), so
 // scrolling the window would silently do nothing and the check would pass on
@@ -6188,6 +6224,7 @@ module.exports = {
   checkShortsRedirect,
   checkLiveRedirect,
   checkTrackingParamsStripped,
+  checkCardTitleHeight,
   checkInfiniteScroll,
   checkUnhandledPage,
   checkUnhandledLinkRouting,

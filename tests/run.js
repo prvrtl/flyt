@@ -19,6 +19,7 @@ const {
   checkShortsRedirect,
   checkLiveRedirect,
   checkTrackingParamsStripped,
+  checkCardTitleHeight,
   checkInfiniteScroll,
   checkUnhandledPage,
   checkUnhandledLinkRouting,
@@ -160,6 +161,7 @@ const FUNCTIONAL_ENTRIES = [
   { subname: 'shorts', label: `shorts (https://www.youtube.com/shorts/${SHORTS_REDIRECT_ID})`, page: 'shorts', check: 'functional', errCheck: 'shorts-redirect', arg: 'context', run: (context) => checkShortsRedirect(context, SHORTS_REDIRECT_ID) },
   { subname: 'live', label: `live (https://www.youtube.com/live/${SHORTS_REDIRECT_ID})`, page: 'shorts', check: 'functional', errCheck: 'live-redirect', arg: 'context', run: (context) => checkLiveRedirect(context, SHORTS_REDIRECT_ID) },
   { subname: 'tracking-params', label: 'tracking params scrubbed from URL', page: 'watch', check: 'functional', errCheck: 'tracking-params-stripped', arg: 'context', run: (context) => checkTrackingParamsStripped(context, SHORTS_REDIRECT_ID) },
+  { subname: 'card-title', label: 'card titles reserve two lines (uniform grid rows)', page: 'channel', check: 'functional', errCheck: 'card-title-height', arg: 'context', run: (context) => checkCardTitleHeight(context) },
   { subname: 'audiotrack', label: `audio track selector (https://www.youtube.com/watch?v=${MULTI_AUDIO_VIDEO_ID})`, page: 'audiotrack', check: 'functional', errCheck: 'audio-track-selector', arg: 'browser', run: (browser) => checkAudioTrackSelector(browser) },
   {
     subname: 'thumbfly',

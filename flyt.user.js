@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.6
+// @version      0.0.7
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -1070,12 +1070,14 @@
       margin: 10px 0 0;
       font-size: 15px;
       font-weight: 600;
+      line-height: 1.3;
       letter-spacing: -.01em;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
       text-wrap: pretty;
+      min-height: 2.6em;
     }
     #itube .c-chan {
       margin-top: 4px;
