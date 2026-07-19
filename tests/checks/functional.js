@@ -5370,6 +5370,31 @@ const FOLLOWING_FIXTURE_CHANNELS = [
     pinnedOld: { id: 'itubeflwpin01', title: 'Old pinned classic', published: '2 years ago' },
     recentUpload: { id: 'itubeflwnew01', title: 'Brand new upload', published: '2 hours ago' },
   },
+  // Regression fixture for the handle/count-swap bug: parseCount() matches
+  // the stray digit inside a handle like "@foo2bar" (real-world: "@pal2tech",
+  // "@penguinz0"), so a naive "does parseCount() match" filter over the
+  // modern-header metadata parts let the handle itself win the Subscribers
+  // slot while the real count shifted into Videos. The fix requires the
+  // matched part to also START with a digit — a handle never does.
+  {
+    id: 'UCFollowTestHandl1',
+    title: 'Handle Digit Channel',
+    modernHeader: true,
+    handle: '@foo2bar',
+    subsText: '77K subscribers',
+    subsNum: 77000,
+    videosText: '42 videos',
+    videosNum: 42,
+  },
+  // Auto-generated "Topic" channel — no real stats, must be grouped into its
+  // own section below all real channels, not interleaved by sort order.
+  {
+    id: 'UCFollowTestTopic1',
+    title: 'Static-X - Topic',
+    subs: null,
+    subsNum: null,
+    videos: null,
+  },
 ];
 
 // The guide endpoint is now only a last-resort fallback (see
@@ -5452,7 +5477,7 @@ function followingBrowseFixture(ch, params) {
             metadata: {
               contentMetadataViewModel: {
                 metadataRows: [
-                  { metadataParts: [{ text: { content: '@' + ch.title.replace(/\s+/g, '') } }] },
+                  { metadataParts: [{ text: { content: ch.handle || ('@' + ch.title.replace(/\s+/g, '')) } }] },
                   { metadataParts: [{ text: { content: ch.subsText } }, { text: { content: ch.videosText } }] },
                 ],
               },
@@ -5502,6 +5527,17 @@ function followingBrowseFixture(ch, params) {
     },
   };
 }
+
+// Topic channels are always grouped into their own trailing section, so any
+// expected row order below must sort the non-topic and topic channels
+// separately and concatenate, rather than sorting the flat fixture list.
+const nonTopicFixtureChannels = FOLLOWING_FIXTURE_CHANNELS.filter((c) => !c.title.endsWith(' - Topic'));
+const topicFixtureChannels = FOLLOWING_FIXTURE_CHANNELS.filter((c) => c.title.endsWith(' - Topic'));
+const localeSort = (arr) => [...arr].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+// Mirrors FOLLOWING_COLUMNS.length in flyt.user.js (Channel, Subscribers,
+// Videos, Last upload, Upload frequency) — the "Topics" separator <td> must
+// colspan all of them.
+const FOLLOWING_TABLE_COLUMN_COUNT = 5;
 
 const HOME_URL = 'https://www.youtube.com/';
 
@@ -5621,7 +5657,7 @@ async function checkFollowingPage(browser) {
     }
 
     const rowTitles = async () => page.evaluate(() => (
-      [...document.querySelectorAll('.following-table tbody tr')].map((tr) => tr.querySelector('.following-chan-name')?.textContent || '')
+      [...document.querySelectorAll('.following-table tbody tr:not(.following-section-row)')].map((tr) => tr.querySelector('.following-chan-name')?.textContent || '')
     ));
 
     // FEchannels-continuation regression guard: the FEchannels fixture splits
@@ -5654,7 +5690,9 @@ async function checkFollowingPage(browser) {
       violations.push({ check: 'following-skeletons-cleared', detail: `expected 0 .following-skeleton placeholders once enrichment settles, found ${skeletonCount}` });
     }
     const finalStatus = await page.evaluate(() => document.querySelector('.following-status')?.textContent || '');
-    const expectedSettled = FOLLOWING_FIXTURE_CHANNELS.length + ' channels';
+    const topicFixtureCount = FOLLOWING_FIXTURE_CHANNELS.filter((c) => c.title.endsWith(' - Topic')).length;
+    const expectedSettled = FOLLOWING_FIXTURE_CHANNELS.length + ' channels'
+      + (topicFixtureCount > 0 ? ' · ' + topicFixtureCount + (topicFixtureCount === 1 ? ' topic' : ' topics') : '');
     if (finalStatus !== expectedSettled) {
       violations.push({ check: 'following-status-settled', detail: `expected settled status "${expectedSettled}" (no truncation note, no leftover progress text); got "${finalStatus}"` });
     }
@@ -5666,16 +5704,17 @@ async function checkFollowingPage(browser) {
     }
 
     const readSubsColumn = async () => page.evaluate(() => (
-      [...document.querySelectorAll('.following-table tbody tr')].map((tr) => ({
+      [...document.querySelectorAll('.following-table tbody tr:not(.following-section-row)')].map((tr) => ({
         name: tr.querySelector('.following-chan-name')?.textContent || '',
         subs: tr.querySelectorAll('td')[1]?.textContent || '',
       }))
     ));
 
     const beforeSort = await readSubsColumn();
-    const expectedDefaultOrder = [...FOLLOWING_FIXTURE_CHANNELS.map((c) => c.title)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const expectedDefaultOrder = localeSort(nonTopicFixtureChannels.map((c) => c.title))
+      .concat(localeSort(topicFixtureChannels.map((c) => c.title)));
     if (beforeSort.map((r) => r.name).join(',') !== expectedDefaultOrder.join(',')) {
-      violations.push({ check: 'following-default-name-sort', detail: `expected the default (Channel, ascending) sort to be locale-aware alphabetical — expected [${expectedDefaultOrder.join(', ')}], got [${JSON.stringify(beforeSort.map((r) => r.name))}]` });
+      violations.push({ check: 'following-default-name-sort', detail: `expected the default (Channel, ascending) sort to be locale-aware alphabetical, topics trailing — expected [${expectedDefaultOrder.join(', ')}], got [${JSON.stringify(beforeSort.map((r) => r.name))}]` });
     }
 
     await page.click('.following-table th:nth-child(2) .following-sort-btn');
@@ -5687,8 +5726,16 @@ async function checkFollowingPage(browser) {
     if (!(ascZuluIdx < ascAlphaIdx)) {
       violations.push({ check: 'following-sort-subs-asc', detail: `expected ascending Subscribers sort to place Zulu Channel (500K) before Alpha Channel (2M); got order ${JSON.stringify(ascSubs.map((r) => r.name))}` });
     }
-    if (ascMikeIdx !== ascSubs.length - 1) {
-      violations.push({ check: 'following-sort-subs-unknown-last-asc', detail: `expected Mike Channel (unknown subscriber count) to sort last on ascending Subscribers sort; got order ${JSON.stringify(ascSubs.map((r) => r.name))}` });
+    // Mike sorts last WITHIN the non-topic group (unknown subs) — the topic
+    // channel(s) still trail the whole non-topic group regardless.
+    if (ascMikeIdx !== nonTopicFixtureChannels.length - 1) {
+      violations.push({ check: 'following-sort-subs-unknown-last-asc', detail: `expected Mike Channel (unknown subscriber count) to sort last within the non-topic group on ascending Subscribers sort; got order ${JSON.stringify(ascSubs.map((r) => r.name))}` });
+    }
+    // Topic-grouping regression guard: no matter the active sort key/dir,
+    // topic channels must stay in their own trailing section.
+    if (ascSubs.length !== nonTopicFixtureChannels.length + topicFixtureChannels.length
+      || !topicFixtureChannels.every((c, i) => ascSubs[nonTopicFixtureChannels.length + i]?.name === c.title)) {
+      violations.push({ check: 'following-topic-section-trailing-asc', detail: `expected topic channel(s) [${topicFixtureChannels.map((c) => c.title).join(', ')}] to trail every non-topic row on ascending Subscribers sort; got order ${JSON.stringify(ascSubs.map((r) => r.name))}` });
     }
 
     await page.click('.following-table th:nth-child(2) .following-sort-btn');
@@ -5700,16 +5747,43 @@ async function checkFollowingPage(browser) {
     if (!(descAlphaIdx < descZuluIdx)) {
       violations.push({ check: 'following-sort-subs-desc', detail: `expected descending Subscribers sort to place Alpha Channel (2M) before Zulu Channel (500K); got order ${JSON.stringify(descSubs.map((r) => r.name))}` });
     }
-    if (descMikeIdx !== descSubs.length - 1) {
-      violations.push({ check: 'following-sort-subs-unknown-last-desc', detail: `expected Mike Channel (unknown subscriber count) to still sort last on descending Subscribers sort; got order ${JSON.stringify(descSubs.map((r) => r.name))}` });
+    if (descMikeIdx !== nonTopicFixtureChannels.length - 1) {
+      violations.push({ check: 'following-sort-subs-unknown-last-desc', detail: `expected Mike Channel (unknown subscriber count) to still sort last within the non-topic group on descending Subscribers sort; got order ${JSON.stringify(descSubs.map((r) => r.name))}` });
+    }
+    if (!topicFixtureChannels.every((c, i) => descSubs[nonTopicFixtureChannels.length + i]?.name === c.title)) {
+      violations.push({ check: 'following-topic-section-trailing-desc', detail: `expected topic channel(s) to still trail every non-topic row on descending Subscribers sort; got order ${JSON.stringify(descSubs.map((r) => r.name))}` });
     }
 
     await page.click('.following-table th:nth-child(1) .following-sort-btn');
     await page.waitForTimeout(200);
     const nameSorted = await rowTitles();
-    const expectedNameOrder = [...FOLLOWING_FIXTURE_CHANNELS.map((c) => c.title)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const expectedNameOrder = localeSort(nonTopicFixtureChannels.map((c) => c.title))
+      .concat(localeSort(topicFixtureChannels.map((c) => c.title)));
     if (nameSorted.join(',') !== expectedNameOrder.join(',')) {
-      violations.push({ check: 'following-sort-name', detail: `expected clicking the Channel header to sort names locale-aware ascending — expected [${expectedNameOrder.join(', ')}], got [${nameSorted.join(', ')}]` });
+      violations.push({ check: 'following-sort-name', detail: `expected clicking the Channel header to sort names locale-aware ascending (topics trailing) — expected [${expectedNameOrder.join(', ')}], got [${nameSorted.join(', ')}]` });
+    }
+
+    // Fix 2 regression guard: a "Topics" section-header row must separate
+    // the topic group from real channels, and each topic row must carry the
+    // dimmed class + badge.
+    const topicSection = await page.evaluate(() => {
+      const sepRow = document.querySelector('.following-table tbody tr.following-section-row');
+      const topicRow = document.querySelector('.following-table tbody tr.following-topic-row');
+      return {
+        sepText: sepRow?.textContent || null,
+        sepColspan: sepRow?.querySelector('td')?.getAttribute('colspan') || null,
+        topicRowHasBadge: !!topicRow?.querySelector('.following-topic-badge'),
+        topicBadgeText: topicRow?.querySelector('.following-topic-badge')?.textContent || null,
+      };
+    });
+    if (topicSection.sepText !== 'Topics') {
+      violations.push({ check: 'following-topic-separator', detail: `expected a "Topics" section-header row, got sepText="${topicSection.sepText}"` });
+    }
+    if (topicSection.sepColspan !== String(FOLLOWING_TABLE_COLUMN_COUNT)) {
+      violations.push({ check: 'following-topic-separator-colspan', detail: `expected the "Topics" separator <td> to span all ${FOLLOWING_TABLE_COLUMN_COUNT} columns, got colspan="${topicSection.sepColspan}"` });
+    }
+    if (!topicSection.topicRowHasBadge || topicSection.topicBadgeText !== 'Topic') {
+      violations.push({ check: 'following-topic-badge', detail: `expected the topic channel's row to carry a "Topic" badge, got badge text "${topicSection.topicBadgeText}"` });
     }
 
     // Fix 1 regression guard: modern pageHeaderRenderer + non-English
@@ -5718,7 +5792,7 @@ async function checkFollowingPage(browser) {
     // against the metadata text, so this fell through to null on every
     // non-English UI.
     const readAllColumns = async () => page.evaluate(() => (
-      [...document.querySelectorAll('.following-table tbody tr')].map((tr) => {
+      [...document.querySelectorAll('.following-table tbody tr:not(.following-section-row)')].map((tr) => {
         const cells = tr.querySelectorAll('td');
         return {
           name: tr.querySelector('.following-chan-name')?.textContent || '',
@@ -5736,6 +5810,20 @@ async function checkFollowingPage(browser) {
     }
     if (!ulanaRow || !/\d/.test(ulanaRow.videos) || ulanaRow.videos === '—') {
       violations.push({ check: 'following-locale-videos-parse', detail: `expected Ulana Channel's German "500 Videos" to parse to a Videos number, got "${ulanaRow?.videos}"` });
+    }
+
+    // Fix 1 regression guard (handle/count-swap): a modern-header handle
+    // containing a digit ("@foo2bar") must NOT be picked up as the
+    // Subscribers value — parseCount() matches the stray "2" inside it, so
+    // pre-fix the handle string itself won when the numericParts filter only
+    // checked "does parseCount() match", shoving the real 77K count into the
+    // Videos column instead.
+    const handleRow = allCols.find((r) => r.name === 'Handle Digit Channel');
+    if (!handleRow || handleRow.subs.includes('@foo2bar') || !/77K/.test(handleRow.subs)) {
+      violations.push({ check: 'following-handle-digit-subs-not-swapped', detail: `expected Handle Digit Channel's Subscribers cell to read "77K subscribers", not the "@foo2bar" handle; got "${handleRow?.subs}"` });
+    }
+    if (!handleRow || !/42/.test(handleRow.videos)) {
+      violations.push({ check: 'following-handle-digit-videos-not-swapped', detail: `expected Handle Digit Channel's Videos cell to read "42 videos", got "${handleRow?.videos}"` });
     }
 
     await page.click('.following-table th:nth-child(2) .following-sort-btn');
