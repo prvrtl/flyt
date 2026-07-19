@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.9
+// @version      0.0.10
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -7732,6 +7732,7 @@
     saveBtn.setAttribute('aria-label', 'Save');
     descBtn.title = 'Description';
     descBtn.setAttribute('aria-label', 'Description');
+    descBtn.style.display = 'none';
     transcriptBtn.title = 'Transcript';
     transcriptBtn.setAttribute('aria-label', 'Transcript');
     transcriptBtn.style.display = 'none';
@@ -8667,6 +8668,7 @@
       currentDescFallback = descFallback;
       renderDescription(descSegments, descFallback, true);
       renderDescChips(descSegments, descFallback);
+      descBtn.style.display = ((desc.textContent || '').trim() || descPopupChips.children.length) ? '' : 'none';
 
       const related = extractVideos(data, new Set(), thumbTarget(COMPACT_THUMB_W)).slice(0, 20);
       firstRelatedId = related[0]?.id || null;
