@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.8
+// @version      0.0.9
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -34,6 +34,8 @@
   const setSponsorSkipOn = (on) => lsSet('itube-skip-sponsors', on ? '1' : '0');
   const dislikesEnabled = () => lsGet('itube-dislikes') !== '0';
   const setDislikesEnabled = (on) => lsSet('itube-dislikes', on ? '1' : '0');
+  const transcriptEnabled = () => lsGet('itube-transcript') === '1';
+  const setTranscriptEnabled = (on) => lsSet('itube-transcript', on ? '1' : '0');
   const savedBoost = () => { const v = parseFloat(lsGet('itube-boost')); return v >= 1 && v <= 2 ? v : 1; };
   const setSavedBoost = (b) => lsSet('itube-boost', String(b));
 
@@ -5414,6 +5416,12 @@
   );
   settingsPanel.appendChild(settingsRowEl('Show dislike estimates', dislikesToggle.el));
 
+  const transcriptToggle = settingsToggle(
+    () => transcriptEnabled(),
+    (on) => setTranscriptEnabled(on),
+  );
+  settingsPanel.appendChild(settingsRowEl('Transcript button', transcriptToggle.el));
+
   settingsPanel.appendChild(settingsSectionHeading('Filters'));
 
   const keywordRow = document.createElement('div');
@@ -8862,12 +8870,12 @@
       transcriptSearch.style.display = 'none';
       transcriptStatus.textContent = '';
       transcriptBtn.style.display = 'none';
+      if (!transcriptEnabled()) return;
       const gen = transcriptGeneration;
       const videoId = resolveVideoId();
-      waitForPlayerResponse(videoId, gen).then((pres) => {
+      loadTranscript(videoId).then(() => {
         if (gen !== transcriptGeneration) return;
-        const track = pickCaptionTrack(pres?.captions?.playerCaptionsTracklistRenderer?.captionTracks);
-        transcriptBtn.style.display = track ? '' : 'none';
+        transcriptBtn.style.display = (transcriptLoadedId === videoId && transcriptSegments.length) ? '' : 'none';
       });
     };
 

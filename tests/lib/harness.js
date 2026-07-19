@@ -39,9 +39,17 @@ async function launchBrowser() {
   return browser;
 }
 
-async function newContext(browser, { viewport = { width: 1440, height: 900 } } = {}) {
+async function newContext(browser, { viewport = { width: 1440, height: 900 }, prefs = null } = {}) {
   const context = await browser.newContext({ viewport });
   await context.addCookies(CONSENT_COOKIES);
+
+  // Seed localStorage prefs (if requested) before the userscript's own
+  // init script runs, so it sees them from the very first read.
+  if (prefs) {
+    await context.addInitScript((p) => {
+      try { for (const k in p) localStorage.setItem(k, p[k]); } catch (e) {}
+    }, prefs);
+  }
 
   // Inject the userscript at document-start, i.e. before any page script
   // runs — this is the one thing that must match how a real userscript

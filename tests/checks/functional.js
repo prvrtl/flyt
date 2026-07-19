@@ -1476,7 +1476,7 @@ async function checkNoScrollWatch(browser) {
 // tab panel.
 async function checkWatchPopups(browser) {
   const violations = [];
-  const context = await newContext(browser);
+  const context = await newContext(browser, { prefs: { 'itube-transcript': '1' } });
   const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
   const commentContinuations = [];
   page.on('request', (req) => {
@@ -3787,7 +3787,7 @@ async function checkSpaceToggle(browser) {
 async function checkTranscript(browser) {
   const violations = [];
   let renderedLineCount = 0;
-  const context = await newContext(browser);
+  const context = await newContext(browser, { prefs: { 'itube-transcript': '1' } });
   const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
@@ -3862,26 +3862,30 @@ async function checkTranscript(browser) {
 // yes, fetch says no) by intercepting the real /api/timedtext request and
 // substituting an empty body, then assert the pill hides and the popup
 // closes rather than sitting there empty.
+// v4.46: the button is now verified before it's shown (resetTranscript
+// eagerly runs loadTranscript itself and only reveals the pill once real
+// segments came back), so a caption track that proves empty at fetch time
+// must mean the pill never appears at all, not "appears then hides on
+// click" — the older recovery-path assertion below is no longer reachable
+// because there's nothing left to click. Force the exact same metadata-yes
+// / body-empty split by intercepting /api/timedtext before navigation (so
+// the eager loadTranscript() sees it too) and assert the pill stays hidden
+// once the app settles.
 async function checkTranscriptProvedUnavailable(browser) {
   const violations = [];
-  const context = await newContext(browser);
+  const context = await newContext(browser, { prefs: { 'itube-transcript': '1' } });
   const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  await page.route('**/api/timedtext**', (route) => {
+    const url = route.request().url();
+    if (/fmt=json3/.test(url)) route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    else route.continue();
+  });
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
-    const pill = await page.waitForSelector('.watch-action-btn[aria-label="Transcript"]', { timeout: 10000 }).catch(() => null);
-    if (!pill) {
-      console.log('  transcript-proved-unavailable: SKIP — no Transcript pill appeared within 10s (this video may have no caption tracks)');
-      return violations;
-    }
-    await page.route('**/api/timedtext**', (route) => {
-      const url = route.request().url();
-      if (/fmt=json3/.test(url)) route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
-      else route.continue();
-    });
-    await pill.click();
-    await page.waitForSelector('.transcript-popup.show', { timeout: 5000 }).catch(() => {});
-    const closed = await page.waitForFunction(() => !document.querySelector('.transcript-popup')?.classList.contains('show'), { timeout: 5000 }).catch(() => null);
+    // Give the eager verify-load a chance to resolve (waitForPlayerResponse's
+    // own poll can take up to ~3s, plus the forced-empty fetch).
+    await page.waitForTimeout(4000);
     const after = await page.evaluate(() => {
       const btn = document.querySelector('.watch-action-btn[aria-label="Transcript"]');
       return {
@@ -3889,11 +3893,38 @@ async function checkTranscriptProvedUnavailable(browser) {
         pillVisible: !!btn && getComputedStyle(btn).display !== 'none',
       };
     });
-    if (!closed || after.popupOpen) {
-      violations.push({ check: 'transcript-empty-fetch-closes-popup', detail: 'expected an empty transcript fetch (metadata said yes, body said no) to close the Transcript popup rather than leave a dead "Transcript unavailable" state open' });
+    if (after.popupOpen) {
+      violations.push({ check: 'transcript-empty-fetch-no-popup', detail: 'expected an empty transcript fetch (metadata said yes, body said no) to never open the Transcript popup' });
     }
     if (after.pillVisible) {
-      violations.push({ check: 'transcript-empty-fetch-hides-pill', detail: 'expected an empty transcript fetch to hide the Transcript pill — its metadata-based presence was wrong for this video' });
+      violations.push({ check: 'transcript-empty-fetch-hides-pill', detail: 'expected an empty transcript fetch to keep the Transcript pill hidden — its metadata-based presence was wrong for this video' });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// Transcript is opt-in, OFF by default (v4.47) — a fresh install with no
+// 'itube-transcript' pref set must never show the Transcript pill, even on
+// a video that indisputably has caption tracks (same video checkTranscript
+// uses). This is the regression that would silently re-enable a feature
+// meant to stay behind a Playback settings toggle.
+async function checkTranscriptOffByDefault(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(4000);
+    const pillVisible = await page.evaluate(() => {
+      const btn = document.querySelector('#itube .watch-actions .watch-action-btn[aria-label="Transcript"]');
+      return !!btn && getComputedStyle(btn).display !== 'none';
+    });
+    if (pillVisible) {
+      violations.push({ check: 'transcript-default-off', detail: 'expected the Transcript pill to stay hidden with no itube-transcript pref set, but it was visible' });
     }
   } finally {
     await page.close();
@@ -4722,7 +4753,7 @@ async function checkSearchNoRefetch(browser) {
 // pill/fetch into an indistinguishable PASS at the run.js call site.
 async function checkTranscriptLazy(browser) {
   const violations = [];
-  const context = await newContext(browser);
+  const context = await newContext(browser, { prefs: { 'itube-transcript': '1' } });
   const timedtextRequests = [];
   const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
   page.on('request', (req) => {
@@ -6193,6 +6224,7 @@ module.exports = {
   checkSpaceToggle,
   checkTranscript,
   checkTranscriptProvedUnavailable,
+  checkTranscriptOffByDefault,
   checkVolumeBoost,
   checkToolsRow,
   checkA11yTabStops,
