@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.4
+// @version      0.0.5
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -3527,7 +3527,7 @@
 
   const BOOT_TYPE = (() => {
     const path = location.pathname;
-    if (path === '/watch' || /^\/shorts\//.test(path)) return 'watch';
+    if (path === '/watch' || /^\/(?:shorts|live)\//.test(path)) return 'watch';
     if (path === '/results') return 'search';
     if (CHANNEL_PATH_RE.test(path)) return 'channel';
     if (path === '/playlist') return 'playlist';
@@ -10166,8 +10166,8 @@
   const NATIVE_NAV_RE = /^\/(redirect|signin|logout|upload|create_channel)(\/|$)/;
 
   const routeInfo = (path, search) => {
-    const shorts = path.match(/^\/shorts\/([^/?]+)/);
-    if (shorts) return { type: 'shorts', shortsId: shorts[1] };
+    const permalink = path.match(/^\/(?:shorts|live)\/([^/?]+)/);
+    if (permalink) return { type: 'shorts', shortsId: permalink[1] };
     if (path === '/watch') return { type: 'watch' };
     if (path === '/') return { type: 'home' };
     if (path === '/results') return { type: 'search' };

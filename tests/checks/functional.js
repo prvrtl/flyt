@@ -979,6 +979,25 @@ async function checkShortsRedirect(context, videoId) {
   return violations;
 }
 
+// /live/<id> is YouTube's live-stream permalink (often with a ?si= tracking
+// param). Flyt must rewrite it to the normal watch page and drop ?si=.
+async function checkLiveRedirect(context, videoId) {
+  const { page } = await openPage(context, `https://www.youtube.com/live/${videoId}?si=FlYtTestToken`);
+  const violations = [];
+  try {
+    await page.waitForFunction(() => location.pathname === '/watch', { timeout: 15000 }).catch(() => {});
+    const dest = await page.evaluate(() => ({ path: location.pathname, v: new URLSearchParams(location.search).get('v') }));
+    if (dest.path !== '/watch') {
+      violations.push({ check: 'live-redirect', detail: `expected /live/${videoId}?si=… to redirect to location.pathname === "/watch", got "${dest.path}"` });
+    } else if (dest.v !== videoId) {
+      violations.push({ check: 'live-redirect', detail: `expected the redirect to carry ?v=${videoId} (with ?si= dropped), got "${dest.v}"` });
+    }
+  } finally {
+    await page.close();
+  }
+  return violations;
+}
+
 // Infinite scroll: the sentinel at the bottom of a list must load more items.
 // `.content` is the scroll container (the document itself doesn't scroll), so
 // scrolling the window would silently do nothing and the check would pass on
@@ -6139,6 +6158,7 @@ module.exports = {
   checkMiniExpandSeamless,
   checkFeedToWatchNavigation,
   checkShortsRedirect,
+  checkLiveRedirect,
   checkInfiniteScroll,
   checkUnhandledPage,
   checkUnhandledLinkRouting,
