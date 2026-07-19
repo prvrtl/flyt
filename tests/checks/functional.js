@@ -3345,7 +3345,7 @@ async function checkAccountMenu(browser) {
     const expect = [
       ['Your channel', (i) => i && !i.blank, 'a native (same-tab, SPA) Your channel link'],
       ['YouTube Studio', (i) => i && i.blank && /studio\.youtube\.com/.test(i.href || ''), 'Studio opening studio.youtube.com in a new tab'],
-      ['Settings', (i) => i && i.blank && /youtube\.com\/account/.test(i.href || ''), 'Settings opening youtube.com/account in a new tab'],
+      ['Settings', (i) => i && !i.blank && !/youtube\.com\/account/.test(i.href || ''), 'Settings opening the in-app settings panel (NOT navigating to youtube.com/account)'],
       ['Switch account', (i) => i && i.blank && /accounts\.google\.com/.test(i.href || ''), 'Switch account opening the Google account chooser'],
       ['Sign out', (i) => i && /youtube\.com\/logout/.test(i.href || ''), 'Sign out pointing at YouTube logout'],
     ];
@@ -3391,6 +3391,58 @@ async function checkAccountMenu(browser) {
       if (!closedByClick) {
         violations.push({ check: 'account-menu-click-to-close', detail: 'expected clicking the avatar again while the menu is open to close it, not reopen it (light-dismiss race)' });
       }
+    }
+
+    // Account -> Settings must open Flyt's OWN settings panel, not navigate to
+    // youtube.com/account (an unhandled page). Open the menu, click Settings,
+    // and confirm the in-app settings overlay opened.
+    await page.evaluate(() => { document.querySelector('.hd-avatar').style.display = 'block'; });
+    await page.click('.hd-avatar');
+    await page.waitForTimeout(120);
+    const settingsOpened = await page.evaluate(() => {
+      const item = [...document.querySelectorAll('.acct-menu .acct-item')].find((a) => a.textContent.trim() === 'Settings');
+      if (!item) return { ok: false, why: 'no Settings item' };
+      item.click();
+      const ov = document.querySelector('.settings-overlay');
+      let popoverOpen = false;
+      try { popoverOpen = !!ov && ov.matches(':popover-open'); } catch (e) {}
+      return { ok: !!ov && (ov.classList.contains('open') || popoverOpen), navigated: location.pathname };
+    });
+    if (!settingsOpened.ok) {
+      violations.push({ check: 'account-settings-opens-panel', detail: `clicking Account → Settings did not open the in-app settings panel (path now "${settingsOpened.navigated}")` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// The collapsed sidebar rail (<=1100px) must center the brand tile, account
+// avatar and nav icons on one vertical line. `.hd-right { margin-left:auto }`
+// (correct for the wide row layout) once shoved the avatar off-axis in the
+// column layout — this guards that symmetry.
+async function checkRailAlignment(browser) {
+  const violations = [];
+  const context = await newContext(browser, { viewport: { width: 1000, height: 900 } });
+  const { page } = await openPage(context, 'https://www.youtube.com/');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube .brand-tile', { timeout: 20000 }).catch(() => {});
+    const c = await page.evaluate(() => {
+      const av = document.querySelector('#itube .hd-avatar');
+      if (av) av.style.display = 'flex'; // avatar is hidden when logged out; force it to measure its box
+      const cx = (sel) => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return r.left + r.width / 2; };
+      return { brand: cx('#itube .brand-tile'), avatar: cx('#itube .hd-avatar'), nav: cx('#itube .nav-row svg') };
+    });
+    const vals = [c.brand, c.avatar, c.nav].filter((v) => v != null);
+    if (vals.length < 3) {
+      violations.push({ check: 'rail-alignment', detail: `expected brand/avatar/nav icons in the collapsed rail, got ${JSON.stringify(c)}` });
+      return violations;
+    }
+    const spread = Math.max(...vals) - Math.min(...vals);
+    if (spread > 1.5) {
+      violations.push({ check: 'rail-alignment', detail: `expected brand tile, avatar and nav icons on one center line in the collapsed rail; center-x spread ${spread.toFixed(1)}px (${JSON.stringify(c)})` });
     }
   } finally {
     await page.close();
@@ -6232,6 +6284,7 @@ module.exports = {
   checkRailTabAria,
   checkAudioOnly,
   checkAccountMenu,
+  checkRailAlignment,
   checkSettings,
   checkCommandPalette,
   checkHoverStates,

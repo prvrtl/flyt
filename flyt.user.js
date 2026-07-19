@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.10
+// @version      0.0.11
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -2829,6 +2829,9 @@
         gap: 8px;
         height: auto;
       }
+      #itube .hd-right {
+        margin-left: 0;
+      }
       #itube .search-wrap {
         display: none;
       }
@@ -4926,7 +4929,8 @@
   };
   const acctChannel = makeItem('Your channel', '/', false);
   const acctStudio = makeItem('YouTube Studio', 'https://studio.youtube.com', true);
-  const acctSettings = makeItem('Settings', 'https://www.youtube.com/account', true);
+  const acctSettings = makeItem('Settings', '#', false);
+  acctSettings.addEventListener('click', (e) => { e.preventDefault(); closeAcctMenu(); openSettings(); });
   const acctSwitch = makeItem('Switch account', 'https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fwww.youtube.com%2F', true);
   const acctSignOut = makeItem('Sign out', 'https://www.youtube.com/logout', false);
   acctSignOut.className = 'acct-item acct-signout';
