@@ -1017,8 +1017,8 @@ async function checkTrackingParamsStripped(context, videoId) {
     if (q.v !== videoId) {
       violations.push({ check: 'tracking-params-stripped', detail: `expected functional ?v=${videoId} preserved, got "${q.v}"` });
     }
-    if (q.t !== '30') {
-      violations.push({ check: 'tracking-params-stripped', detail: `expected functional ?t=30 (start time) preserved, got "${q.t}"` });
+    if (q.t !== '30' && q.t !== '30s') {
+      violations.push({ check: 'tracking-params-stripped', detail: `expected functional start-time ?t preserved (30 or YouTube-normalized 30s), got "${q.t}"` });
     }
   } finally {
     await page.close();

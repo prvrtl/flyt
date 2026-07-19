@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.12
+// @version      0.0.13
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -478,7 +478,7 @@
       display: flex;
       flex-direction: column;
       gap: 14px;
-      padding: 6px 4px 16px;
+      padding: 6px 12px 16px;
       margin-bottom: 8px;
       border-bottom: 1px solid var(--hairline);
     }
@@ -521,7 +521,8 @@
       box-sizing: border-box;
     }
     #itube .search:focus {
-      border: 2px solid var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
     }
     #itube .rail-search-btn {
       display: none;
@@ -591,7 +592,7 @@
     }
     #itube .search-suggest-row.active,
     #itube .search-suggest-row:hover {
-      background: rgba(255, 255, 255, .1);
+      background: var(--hover);
     }
     #itube .hd-right {
       margin-left: auto;
@@ -798,7 +799,7 @@
       overflow-y: auto;
       overflow-x: hidden;
       overscroll-behavior: contain;
-      padding: 14px 8px 16px 12px;
+      padding: 14px 12px 16px;
     }
     #itube .sidebar-head {
       position: sticky;
@@ -1665,7 +1666,7 @@
     }
     #itube .watch-like-btn:hover,
     #itube .watch-dislike-btn:hover {
-      background: rgba(255, 255, 255, .08);
+      background: var(--hover);
     }
     #itube .watch-like-btn:disabled,
     #itube .watch-dislike-btn:disabled {
@@ -1718,7 +1719,7 @@
       color: var(--text);
     }
     #itube .watch-subscribe.subscribed:hover {
-      background: rgba(255, 255, 255, .08);
+      background: var(--hover);
     }
     #itube .watch-channel,
     #itube .watch-stats,
@@ -1931,7 +1932,7 @@
       cursor: pointer;
     }
     #itube .comments-sort-btn.active {
-      background: rgba(var(--accent-rgb), .14);
+      background: rgba(var(--accent-rgb), .16);
       border-color: rgba(var(--accent-rgb), .45);
       color: var(--accent);
     }
@@ -2089,7 +2090,8 @@
       box-sizing: border-box;
     }
     #itube .transcript-search:focus {
-      border: 2px solid var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
     }
     #itube .transcript-body {
       margin-top: 10px;
@@ -2316,7 +2318,7 @@
       width: 246px;
       height: 138px;
       flex: 0 0 246px;
-      border-radius: 12px;
+      border-radius: var(--r-sm);
       overflow: hidden;
       background: var(--raised);
       position: relative;
@@ -2374,7 +2376,7 @@
       width: 246px;
       height: 138px;
       flex: 0 0 246px;
-      border-radius: 12px;
+      border-radius: var(--r-sm);
       background: var(--raised);
     }
     #itube .row-skel-body {
@@ -3708,23 +3710,25 @@
 
   const isAdKey = (key) => AD_KEYS.has(key) || AD_KEY_RE.test(key);
 
+  const WALK_STOP = Symbol('flyt-walk-stop');
   const walk = (node, visit) => {
-    if (!node || typeof node !== 'object') return;
-    visit(node);
+    if (!node || typeof node !== 'object') return false;
+    if (visit(node) === WALK_STOP) return true;
     if (Array.isArray(node)) {
-      for (const item of node) walk(item, visit);
+      for (const item of node) if (walk(item, visit) === true) return true;
     } else {
       for (const key in node) {
         if (!Object.prototype.hasOwnProperty.call(node, key)) continue;
         if (isAdKey(key)) continue;
-        walk(node[key], visit);
+        if (walk(node[key], visit) === true) return true;
       }
     }
+    return false;
   };
 
   const findNode = (root, pred) => {
     let found = null;
-    walk(root, (node) => { if (!found && pred(node)) found = node; });
+    walk(root, (node) => { if (pred(node)) { found = node; return WALK_STOP; } });
     return found;
   };
 
@@ -3738,15 +3742,12 @@
   };
 
   const findTabParams = (root, want) => {
-    const found = [];
+    let match = null;
     walk(root, (n) => {
       const p = n?.browseEndpoint?.params;
-      if (typeof p === 'string') found.push(p);
+      if (typeof p === 'string' && decodeParams(p).includes(want)) { match = p; return WALK_STOP; }
     });
-    for (const p of found) {
-      if (decodeParams(p).includes(want)) return p;
-    }
-    return null;
+    return match;
   };
 
   const getTitle = (node) => (
@@ -4195,9 +4196,8 @@
   const findContinuationToken = (root) => {
     let token = null;
     walk(root, (node) => {
-      if (token) return;
       const t = node?.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
-      if (typeof t === 'string' && t) token = t;
+      if (typeof t === 'string' && t) { token = t; return WALK_STOP; }
     });
     return token;
   };
@@ -4211,9 +4211,8 @@
   const findAnyContinuationToken = (root) => {
     let token = null;
     walk(root, (node) => {
-      if (token) return;
       const t = node?.continuationCommand?.token;
-      if (typeof t === 'string' && t) token = t;
+      if (typeof t === 'string' && t) { token = t; return WALK_STOP; }
     });
     return token;
   };
@@ -5598,9 +5597,14 @@
   let guideChannelsPromise = null;
   let guideChannelsScheduled = false;
   let guideAttempts = 0;
+  let guidePaintedSig = null;
   const guideWaitStart = Date.now();
   const paintGuideChannels = () => {
-    const channels = guideChannelsCache || [];
+    const cache = guideChannelsCache;
+    const sig = (cache && cache.length) ? cache.length + ':' + (cache[0].browseId || '') + ':' + (cache[cache.length - 1].browseId || '') : '0';
+    if (sig === guidePaintedSig) return;
+    guidePaintedSig = sig;
+    const channels = cache || [];
     if (!channels.length) { subsSection.replaceChildren(); return; }
     const label = document.createElement('div');
     label.className = 'nav-section-label';
@@ -5957,7 +5961,7 @@
   mini.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button')) return;
     const rect = mini.getBoundingClientRect();
-    miniDrag = { startX: e.clientX, startY: e.clientY, left: rect.left, top: rect.top, moved: false };
+    miniDrag = { startX: e.clientX, startY: e.clientY, left: rect.left, top: rect.top, w: rect.width, h: rect.height, moved: false };
     mini.setPointerCapture(e.pointerId);
   });
   mini.addEventListener('pointermove', (e) => {
@@ -5966,8 +5970,8 @@
     const dy = e.clientY - miniDrag.startY;
     if (!miniDrag.moved && Math.hypot(dx, dy) < 5) return;
     miniDrag.moved = true;
-    const w = mini.offsetWidth;
-    const h = mini.offsetHeight;
+    const w = miniDrag.w;
+    const h = miniDrag.h;
     let left = miniDrag.left + dx;
     let top = miniDrag.top + dy;
     left = Math.max(0, Math.min(window.innerWidth - w, left));
