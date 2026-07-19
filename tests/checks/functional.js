@@ -5321,9 +5321,15 @@ async function checkBackForwardCache(browser) {
 // fast-path subscriptions (capped at MAX_GUIDE_CHANNELS=30 for the nav rail),
 // so a full, sortable table needed its own route. Logged-out has no real
 // subscriptions to drive this deterministically against, so — following the
-// fixture-injection pattern in checks/feedorder.js — this mocks the `guide`
-// InnerTube endpoint with a crafted channel fixture (reusing the SAME
-// collectGuideChannels()/fetchGuideChannels() path the sidebar uses) and
+// fixture-injection pattern in checks/feedorder.js — this mocks the
+// FEchannels manage-subscriptions feed (fetched via the `browse` InnerTube
+// endpoint, browseId 'FEchannels' — the PRIMARY source for
+// fetchGuideChannels(), since the plain `guide` endpoint truncates past
+// ~100 subscriptions without reliably exposing a continuation) with a
+// crafted channelRenderer-shaped fixture (reusing the SAME
+// collectGuideChannels()/fetchGuideChannels() path the sidebar uses), forces
+// the `guide` endpoint to report an empty channel list (proving FEchannels
+// is genuinely primary, not just tried-first-then-silently-ignored), and
 // mocks `browse` for each channelId, leaving one channelId's browse
 // unanswered (empty {} body) so its Subscribers/Videos/Last upload columns
 // stay unresolved — the deterministic case for "unknown values render as —
@@ -5366,38 +5372,55 @@ const FOLLOWING_FIXTURE_CHANNELS = [
   },
 ];
 
-// fetchGuideChannels() must follow the guide endpoint's continuation instead
-// of truncating at whatever the first page holds (the real-world bug: users
-// with >100 subscriptions lost everything past the first page, which also
-// fed subscribedByGuide() so the subscribe button went wrong past #100). To
-// prove that without needing 100+ fixture channels, the guide fixture is
-// split across two pages — only the first GUIDE_PAGE1_COUNT fixture channels
-// are on page 1 (which also carries a continuation token), and the rest are
-// served only when the continuation is followed. A truncated implementation
-// would render exactly GUIDE_PAGE1_COUNT rows instead of the full set.
-const GUIDE_CONTINUATION_TOKEN = 'FLYT_TEST_GUIDE_CONTINUATION_TOKEN';
-const GUIDE_PAGE1_COUNT = 3;
+// The guide endpoint is now only a last-resort fallback (see
+// fetchGuideChannels()), so its mock must return an empty, non-paginating
+// channel list — a stub that proves the fallback-proofing works: if a
+// regression made the implementation silently prefer (or fall back to) the
+// guide endpoint, this fixture would starve the table down to 0 rows and
+// the test would fail loudly, instead of quietly passing via the old path.
+function followingGuideFixture() {
+  return { items: [{ guideSectionRenderer: { items: [] } }] };
+}
 
-function followingGuideFixture(continuation) {
-  const isPage2 = continuation === GUIDE_CONTINUATION_TOKEN;
+// fetchGuideChannels() must follow FEchannels' continuation instead of
+// truncating at whatever the first page holds (the real-world bug: users
+// with >100 subscriptions lost everything past the first page — the guide
+// endpoint doesn't reliably expose a continuation past its own cap, so
+// falling back to FEchannels only when the guide reported none could itself
+// be starved). To prove pagination works without needing 100+ fixture
+// channels, the FEchannels fixture is split across two pages — only the
+// first FECHANNELS_PAGE1_COUNT fixture channels are on page 1 (which also
+// carries a continuation token), and the rest are served only when the
+// continuation is followed. A truncated implementation would render exactly
+// FECHANNELS_PAGE1_COUNT rows instead of the full set. Channels are served
+// as channelRenderer nodes (the shape FEchannels actually uses, unlike the
+// guideEntryRenderer shape the old guide-primary fixture used) inside a
+// plausible browse-response wrapper — a sectionListRenderer/
+// itemSectionRenderer contents array — which is enough for the generic
+// walk()-based extractor to reach.
+const FECHANNELS_CONTINUATION_TOKEN = 'FLYT_TEST_FECHANNELS_CONTINUATION_TOKEN';
+const FECHANNELS_PAGE1_COUNT = 3;
+
+function followingFEchannelsFixture(continuation) {
+  const isPage2 = continuation === FECHANNELS_CONTINUATION_TOKEN;
   const pageChannels = isPage2
-    ? FOLLOWING_FIXTURE_CHANNELS.slice(GUIDE_PAGE1_COUNT)
-    : FOLLOWING_FIXTURE_CHANNELS.slice(0, GUIDE_PAGE1_COUNT);
+    ? FOLLOWING_FIXTURE_CHANNELS.slice(FECHANNELS_PAGE1_COUNT)
+    : FOLLOWING_FIXTURE_CHANNELS.slice(0, FECHANNELS_PAGE1_COUNT);
   const items = pageChannels.map((ch) => ({
-    guideEntryRenderer: {
-      navigationEndpoint: { browseEndpoint: { browseId: ch.id } },
-      formattedTitle: { simpleText: ch.title },
+    channelRenderer: {
+      channelId: ch.id,
+      title: { simpleText: ch.title },
       thumbnail: { thumbnails: [{ url: `https://yt3.googleusercontent.com/${ch.id}.jpg`, width: 88, height: 88 }] },
     },
   }));
   if (!isPage2) {
     items.push({
       continuationItemRenderer: {
-        continuationEndpoint: { continuationCommand: { token: GUIDE_CONTINUATION_TOKEN } },
+        continuationEndpoint: { continuationCommand: { token: FECHANNELS_CONTINUATION_TOKEN } },
       },
     });
   }
-  return { items: [{ guideSectionRenderer: { items } }] };
+  return { contents: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: items } }] } } };
 }
 
 function followingVideoItemFixture(item) {
@@ -5493,27 +5516,19 @@ async function checkFollowingPage(browser) {
   // that mountFollowing then reuses instead of ever re-fetching.
   const guideRe = /\/youtubei\/v1\/guide/;
   const browseRe = /\/youtubei\/v1\/browse/;
-  // Counts every guide fulfillment (by continuation) so the assertion below
-  // can prove fetchGuideChannels() actually followed the continuation to a
-  // second page instead of returning after page 1.
-  let guidePage1CallCount = 0;
-  let guidePage2CallCount = 0;
-  await context.route(guideRe, (route) => {
-    let continuation = null;
-    try {
-      const body = JSON.parse(route.request().postData() || '{}');
-      continuation = body.continuation || null;
-    } catch (e) {
-      // fall through — not JSON we understand, treat as page 1
-    }
-    if (continuation === GUIDE_CONTINUATION_TOKEN) guidePage2CallCount++;
-    else guidePage1CallCount++;
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(followingGuideFixture(continuation)),
-    });
-  });
+  // The guide endpoint is only a last-resort fallback now — this mock always
+  // returns the empty stub (see followingGuideFixture's comment above), so
+  // any call here at all is fine, but the list must come from FEchannels.
+  await context.route(guideRe, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(followingGuideFixture()),
+  }));
+  // Counts every FEchannels fulfillment (by continuation) so the assertion
+  // below can prove fetchGuideChannels() actually followed the FEchannels
+  // continuation to a second page instead of returning after page 1.
+  let feChannelsPage1CallCount = 0;
+  let feChannelsPage2CallCount = 0;
   // Counts every fixture-channel browse fulfillment, so the persistent-cache
   // regression guard below can prove a second mount served entirely from
   // localStorage instead of re-fetching every followed channel.
@@ -5521,12 +5536,28 @@ async function checkFollowingPage(browser) {
   await context.route(browseRe, (route) => {
     let browseId = null;
     let params = null;
+    let continuation = null;
     try {
       const body = JSON.parse(route.request().postData() || '{}');
       browseId = body.browseId;
       params = body.params || null;
+      continuation = body.continuation || null;
     } catch (e) {
       // fall through — not JSON we understand, let it hit the network
+    }
+    // FEchannels requests: the first page carries browseId 'FEchannels', but
+    // continuation requests carry ONLY a continuation token (no browseId) —
+    // matching on the token is the only way to route page-2 requests here,
+    // otherwise they'd fall through to the per-channel lookup below, find no
+    // match, and hit route.continue() (real network), which must not happen.
+    if (browseId === 'FEchannels' || continuation === FECHANNELS_CONTINUATION_TOKEN) {
+      if (continuation === FECHANNELS_CONTINUATION_TOKEN) feChannelsPage2CallCount++;
+      else feChannelsPage1CallCount++;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(followingFEchannelsFixture(continuation)),
+      });
     }
     const ch = FOLLOWING_FIXTURE_CHANNELS.find((c) => c.id === browseId);
     if (ch) {
@@ -5593,15 +5624,15 @@ async function checkFollowingPage(browser) {
       [...document.querySelectorAll('.following-table tbody tr')].map((tr) => tr.querySelector('.following-chan-name')?.textContent || '')
     ));
 
-    // Guide-continuation regression guard: the guide fixture splits its
-    // channels across two pages (page 1 + a continuation token), so a
+    // FEchannels-continuation regression guard: the FEchannels fixture splits
+    // its channels across two pages (page 1 + a continuation token), so a
     // truncated fetchGuideChannels() would only ever request page 1 and the
     // rendered table would be missing every channel that only page 2 holds.
     // Asserting both the page-2 request happened AND the combined row count
     // (first-page + second-page channels) proves continuations are followed
     // rather than the list silently stopping at page 1.
-    if (guidePage2CallCount < 1) {
-      violations.push({ check: 'following-guide-continuation-followed', detail: `expected fetchGuideChannels() to request the guide continuation (page 2) at least once, saw ${guidePage2CallCount} such request(s) (page 1 requests: ${guidePage1CallCount})` });
+    if (feChannelsPage2CallCount < 1) {
+      violations.push({ check: 'following-fechannels-continuation-followed', detail: `expected fetchGuideChannels() to request the FEchannels continuation (page 2) at least once, saw ${feChannelsPage2CallCount} such request(s) (page 1 requests: ${feChannelsPage1CallCount})` });
     }
 
     const initialTitles = await rowTitles();

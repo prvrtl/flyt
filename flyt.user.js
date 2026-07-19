@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.1
+// @version      0.0.2
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -5057,16 +5057,67 @@
   // `seenIds` is optional and defaults to a fresh Set for a one-off call, but
   // fetchGuideChannels() passes a Set it keeps across pages so continuation
   // pages dedupe against everything collected so far, not just themselves.
+  // FEchannels (the manage-subscriptions feed, now the PRIMARY source — see
+  // fetchGuideChannels()) does not list channels as guideEntryRenderer nodes;
+  // it uses channelRenderer/gridChannelRenderer (and, defensively, whatever
+  // other shape a catch-all can independently pull an id/title/avatar out
+  // of). All three branches feed the same deduped `seenIds` Set, so the same
+  // underlying object matched twice (e.g. by the catch-all AND a specific
+  // branch, since `walk()` visits nested objects separately) is only added
+  // once.
+  const lastThumbUrl = (thumbs) => (Array.isArray(thumbs) && thumbs.length ? thumbs[thumbs.length - 1]?.url : null);
+  const textOf = (obj) => obj?.simpleText || obj?.runs?.[0]?.text || null;
+
   const collectGuideChannels = (root, seenIds = new Set()) => {
     const out = [];
     walk(root, (node) => {
-      const g = node?.guideEntryRenderer;
-      if (!g) return;
-      const browseId = g.navigationEndpoint?.browseEndpoint?.browseId;
+      if (!node || typeof node !== 'object') return;
+
+      const g = node.guideEntryRenderer;
+      if (g) {
+        const browseId = g.navigationEndpoint?.browseEndpoint?.browseId;
+        if (typeof browseId === 'string' && browseId.startsWith('UC') && !seenIds.has(browseId)) {
+          const title = g.formattedTitle?.simpleText || g.formattedTitle?.runs?.[0]?.text || g.title?.simpleText;
+          const avatarUrl = lastThumbUrl(g.thumbnail?.thumbnails);
+          if (title && avatarUrl) {
+            seenIds.add(browseId);
+            out.push({ browseId, title, avatar: avatarUrl });
+          }
+        }
+        return;
+      }
+
+      const c = node.channelRenderer || node.gridChannelRenderer;
+      if (c) {
+        const browseId = c.channelId || c.navigationEndpoint?.browseEndpoint?.browseId;
+        if (typeof browseId === 'string' && browseId.startsWith('UC') && !seenIds.has(browseId)) {
+          const title = c.title?.simpleText || c.title?.runs?.[0]?.text;
+          const avatarUrl = lastThumbUrl(c.thumbnail?.thumbnails);
+          if (title && avatarUrl) {
+            seenIds.add(browseId);
+            const entry = { browseId, title, avatar: avatarUrl };
+            // Bonus fields, additive only — nothing downstream depends on
+            // these being present (the Following page still enriches every
+            // channel via its own per-channel browse fetch regardless).
+            const subs = textOf(c.subscriberCountText);
+            const videos = textOf(c.videoCountText);
+            if (subs) entry.subscriberCountText = subs;
+            if (videos) entry.videoCountText = videos;
+            out.push(entry);
+          }
+        }
+        return;
+      }
+
+      // Catch-all: only fires for nodes not already handled above, and only
+      // counts a hit if id + title + avatar ALL resolve — same guard as the
+      // specific branches, just against a wider set of field-name shapes.
+      const browseId = node.navigationEndpoint?.browseEndpoint?.browseId || node.channelId;
       if (typeof browseId !== 'string' || !browseId.startsWith('UC') || seenIds.has(browseId)) return;
-      const title = g.formattedTitle?.simpleText || g.formattedTitle?.runs?.[0]?.text || g.title?.simpleText;
-      const thumbs = g.thumbnail?.thumbnails;
-      const avatarUrl = Array.isArray(thumbs) && thumbs.length ? thumbs[thumbs.length - 1]?.url : null;
+      const title = textOf(node.title) || textOf(node.formattedTitle) || textOf(node.displayName);
+      const avatarUrl = lastThumbUrl(node.thumbnail?.thumbnails)
+        || lastThumbUrl(node.avatar?.thumbnails)
+        || lastThumbUrl(node.avatar?.decoratedAvatarViewModel?.avatar?.avatarImageViewModel?.image?.sources);
       if (!title || !avatarUrl) return;
       seenIds.add(browseId);
       out.push({ browseId, title, avatar: avatarUrl });
@@ -5107,33 +5158,50 @@
   // (so the subscribe button reads correctly too) — all three go stale past
   // ~100 subscriptions if we stop at the guide endpoint's first page, so this
   // follows continuations to the end instead of returning a partial list.
+  //
+  // FEchannels (the manage-subscriptions feed, /feed/channels) is the PRIMARY
+  // source: unlike the guide endpoint (which the sidebar's fast-path caps to
+  // MAX_GUIDE_CHANNELS server-side and doesn't reliably expose a continuation
+  // past that cap), FEchannels is built to paginate through the whole list.
+  // The old guide-first design silently truncated at ~100 subscriptions
+  // because the guide endpoint reported no continuation for a non-empty
+  // (but incomplete) page — falling back to FEchannels only in that case
+  // meant the fallback itself could be starved. Trying FEchannels first
+  // avoids that failure mode entirely; the guide endpoint is now only a
+  // last-resort fallback for the (rare) case FEchannels returns nothing.
   const fetchGuideChannels = async () => {
     const seenIds = new Set();
-    // window.ytInitialGuideData is a synchronous first-page seed (no network
-    // round trip) — reuse it as page 1 when it's there, but it must still be
-    // checked for its OWN continuation token below rather than treated as
-    // complete just because it's non-empty.
-    const seed = window.ytInitialGuideData;
-    const out = collectGuideChannels(seed, seenIds);
-    let firstRes = seed;
+    const out = [];
+    // On a genuine hard-load of /feed/channels, window.ytInitialData IS the
+    // FEchannels payload — reuse it as a synchronous page-1 seed (no network
+    // round trip). On every OTHER page (e.g. at boot, feeding the sidebar),
+    // window.ytInitialData is that page's own data, not FEchannels', so this
+    // must be gated on the pathname or it would misread unrelated data.
+    let feRes = location.pathname === '/feed/channels' ? window.ytInitialData : null;
+    if (feRes) out.push(...collectGuideChannels(feRes, seenIds));
     if (!out.length) {
+      feRes = await innertube('browse', { browseId: 'FEchannels' });
+      if (feRes) out.push(...collectGuideChannels(feRes, seenIds));
+    }
+    if (out.length) {
+      await paginateGuideChannels('browse', feRes, seenIds, out);
+      return out;
+    }
+    // FEchannels' first page yielded zero channels — fall back to the guide
+    // endpoint exactly as the old primary path worked, so a genuinely
+    // subscription-less (or logged-out) account still resolves to `[]`
+    // rather than throwing or hanging, and a real fetch failure still
+    // returns `null` so loadChannels()'s error message fires.
+    const seed = window.ytInitialGuideData;
+    const guideOut = collectGuideChannels(seed, seenIds);
+    let firstRes = seed;
+    if (!guideOut.length) {
       firstRes = await innertube('guide', {});
       if (!firstRes) return null;
-      out.push(...collectGuideChannels(firstRes, seenIds));
+      guideOut.push(...collectGuideChannels(firstRes, seenIds));
     }
-    const guideHadContinuation = await paginateGuideChannels('guide', firstRes, seenIds, out);
-    if (!guideHadContinuation && out.length) {
-      // The guide endpoint never exposed a continuation for this non-empty
-      // list — fall back to the manage-subscriptions feed (/feed/channels),
-      // which paginates via ordinary browse continuations, so subscribers
-      // past whatever the guide's single page holds aren't silently dropped.
-      const feRes = await innertube('browse', { browseId: 'FEchannels' });
-      if (feRes) {
-        out.push(...collectGuideChannels(feRes, seenIds));
-        await paginateGuideChannels('browse', feRes, seenIds, out);
-      }
-    }
-    return out;
+    await paginateGuideChannels('guide', firstRes, seenIds, guideOut);
+    return guideOut;
   };
   const subsSection = document.createElement('div');
   subsSection.className = 'nav-subs';
