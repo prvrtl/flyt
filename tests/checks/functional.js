@@ -479,6 +479,40 @@ async function runWatchFunctional(page) {
     }
   }
 
+  // --- an explicit pause must survive the boot/SPA resume window ---
+  // Regression for the "press space, it works for half a second and jumps
+  // back" bug: on navigation the app arms a ~6s resume window that force-plays
+  // a paused video (to beat the pause the browser inflicts when the <video> is
+  // re-parented into the stage). It only disarmed once a tick *observed* the
+  // video playing, so a user pause landing before that tick left the window
+  // armed and it re-played ~500ms later. An intentional pause must win.
+  // Kept last in runWatchFunctional: it does an SPA re-navigation that remounts
+  // the watch page, so nothing after it should rely on the pre-nav mount.
+  if ((await videoState(page)).paused) {
+    await page.evaluate(() => document.querySelector('#itube-stage video').play());
+    await page.waitForTimeout(300);
+  }
+  await page.evaluate(() => {
+    document.activeElement && document.activeElement.blur();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(300);
+  const pausedByUser = (await videoState(page)).paused;
+  // Re-arm the resume window: an in-app SPA re-nav to the same video (the app
+  // arms the window on nav when the player already holds the video).
+  const curId = await page.evaluate(() => new URLSearchParams(location.search).get('v'));
+  await page.evaluate((v) => {
+    history.pushState({}, '', `/watch?v=${v}&x=1`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, curId);
+  await page.waitForTimeout(1400);
+  const stillPaused = (await videoState(page)).paused;
+  // Only assert when the Space pause actually took (an ad rolling in the same
+  // <video> can leave it playing — that's a media swap, not this bug).
+  if (pausedByUser && !stillPaused) {
+    report('pause-survives-resume', 'an explicit Space pause was overridden: after an SPA re-nav the resume window forced the paused video back to playing (the "jumps back" bug)');
+  }
+
   return violations;
 }
 

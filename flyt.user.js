@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.13
+// @version      0.0.14
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -8754,8 +8754,8 @@
     const setMediaSessionAvActions = () => {
       if (!('mediaSession' in navigator)) return;
       try {
-        navigator.mediaSession.setActionHandler('play', () => { wired?.play().catch(() => {}); });
-        navigator.mediaSession.setActionHandler('pause', () => { wired?.pause(); });
+        navigator.mediaSession.setActionHandler('play', () => { userPausedPlayback = false; wired?.play().catch(() => {}); });
+        navigator.mediaSession.setActionHandler('pause', () => { userPausedPlayback = true; wired?.pause(); });
         navigator.mediaSession.setActionHandler('seekbackward', () => {
           if (wired) wired.currentTime = Math.max(0, wired.currentTime - 10);
         });
@@ -9093,6 +9093,7 @@
       if (now - lastToggleAt < 300) return;
       lastToggleAt = now;
       const willPlay = v.paused;
+      userPausedPlayback = !willPlay;
       if (willPlay) v.play(); else v.pause();
       showOSD(willPlay ? ICONS.play : ICONS.pause, willPlay ? 'Playing' : 'Paused');
     };
@@ -9399,6 +9400,7 @@
         clickTimer = null;
         const v = document.querySelector('#itube-stage video');
         if (v) {
+          userPausedPlayback = !v.paused;
           v.paused ? v.play() : v.pause();
           showOSD(v.paused ? ICONS.pause : ICONS.play, v.paused ? 'Paused' : 'Playing');
         }
@@ -10128,9 +10130,15 @@
   let requestedAt = 0;
   let resumeVideoId = null;
   let resumeUntil = 0;
+  // Set when the user explicitly pauses (Space / click / media keys). The boot
+  // resume window must never fight an intentional pause — otherwise a pause
+  // that lands before the window's first "it's playing" tick gets steamrolled
+  // ~500ms later, so playback "jumps back" to playing.
+  let userPausedPlayback = false;
 
   const resumePlayback = () => {
     if (!resumeVideoId) return;
+    if (userPausedPlayback) { resumeVideoId = null; return; }
     const pl = playable();
     if (!pl) return;
     if (Date.now() > resumeUntil || pl.getVideoData?.()?.video_id !== resumeVideoId) {
@@ -10153,6 +10161,7 @@
     requestedVideoId = videoId;
     requestedAt = Date.now();
     resumeVideoId = null;
+    userPausedPlayback = false;   // a fresh video defaults to playing
     pl.loadVideoById(videoId);
   };
 
