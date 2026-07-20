@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.17
+// @version      0.0.18
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -10702,7 +10702,7 @@
     if (BOOT_TYPE === 'watch') {
       const v = document.querySelector('#itube-stage video');
       if (v && v.readyState >= 2) finishBoot();
-    } else if (view.querySelector('.c, .row, .rc, .empty, .signin-state')) {
+    } else if (view.querySelector('.c, .row, .rc, .empty, .signin-state, .following-table, .following-status')) {
       finishBoot();
     }
   }, 80);
