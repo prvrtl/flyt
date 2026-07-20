@@ -201,14 +201,36 @@ async function checkCommentAuthorLinks(page) {
 // guaranteed false positive.
 async function checkChannelLinkNavigation(page, pageName) {
   const violations = [];
-  const link = await page.$('#itube a.c-chan[href], #itube a.row-chan[href], #itube a.rc-chan[href]');
+  // Click by SELECTOR and only a VISIBLE match: an in-flight renderMeta()
+  // can replaceChildren() the rail between $() and click() (detached-handle
+  // retries — the long-standing flake here), and earlier checks can leave
+  // the DOM-first match inside a hidden panel. If nothing is visible within
+  // 10s, report a state dump as a violation instead of hanging for 30s.
+  const CHAN_LINK_SEL = '#itube a.c-chan[href], #itube a.row-chan[href], #itube a.rc-chan[href]';
+  const link = await page.$(CHAN_LINK_SEL);
   if (!link) {
     if (pageName !== 'home') {
       violations.push({ check: 'channel-link-navigates', detail: `no channel link to click on the ${pageName} page` });
     }
     return violations;
   }
-  const href = await page.evaluate((el) => el.getAttribute('href'), link);
+  const visibleLink = page.locator(CHAN_LINK_SEL).locator('visible=true').first();
+  try {
+    await visibleLink.waitFor({ state: 'visible', timeout: 10000 });
+  } catch (e) {
+    const dump = await page.evaluate(() => {
+      const first = document.querySelector('#itube a.c-chan[href], #itube a.row-chan[href], #itube a.rc-chan[href]');
+      const chain = [];
+      for (let el = first; el && chain.length < 8; el = el.parentElement) {
+        const cs = getComputedStyle(el);
+        chain.push(`${el.className || el.tagName}[display=${cs.display},vis=${cs.visibility},h=${el.getBoundingClientRect().height.toFixed(0)}]`);
+      }
+      return { total: document.querySelectorAll('#itube a.c-chan[href], #itube a.row-chan[href], #itube a.rc-chan[href]').length, chain: chain.join(' < ') };
+    });
+    violations.push({ check: 'channel-link-navigates', detail: `no VISIBLE channel link on ${pageName} within 10s — ${dump.total} in DOM, first one's ancestor chain: ${dump.chain}` });
+    return violations;
+  }
+  const href = await visibleLink.getAttribute('href');
 
   const mainFrame = page.mainFrame();
   let docLoads = 0;
@@ -216,7 +238,7 @@ async function checkChannelLinkNavigation(page, pageName) {
     if (req.resourceType() === 'document' && req.frame() === mainFrame) docLoads++;
   };
   page.on('request', onRequest);
-  await link.click();
+  await visibleLink.click();
   await page.waitForFunction(() => /^\/(@|channel\/)/.test(location.pathname), { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(2500);
   page.off('request', onRequest);
@@ -328,6 +350,12 @@ async function runChannelChecks(page, pageName, url) {
     violations = violations.concat(await checkCommentAuthorLinks(page));
     // Comments render another ~20 author links; re-assert after they exist.
     violations = violations.concat(await checkNoNestedAnchors(page, 'watch (comments expanded)'));
+    // checkCommentAuthorLinks leaves the rail on the Comments tab, which
+    // display:none's the Up next panel — and the channel-link click below
+    // needs a VISIBLE .rc-chan. This was the actual mechanism behind this
+    // suite's long-standing "watch harness" timeout flake.
+    await page.evaluate(() => document.getElementById('itube-rail-tab-upnext')?.click());
+    await page.waitForTimeout(200);
   }
 
   if (pageName === 'playlist') {

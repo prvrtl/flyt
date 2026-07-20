@@ -585,6 +585,12 @@ async function runWatchFunctional(page) {
   if (pausedByUser && !stillPaused) {
     report('pause-survives-resume', 'an explicit Space pause was overridden: after an SPA re-nav the resume window forced the paused video back to playing (the "jumps back" bug)');
   }
+  // The re-nav above remounts the watch view and kicks a fresh renderWatchFor;
+  // let its related rail land and settle before returning, or the NEXT check
+  // grabs element handles that renderMeta's replaceChildren() then detaches
+  // (Playwright retries the dead node until timeout).
+  await page.waitForFunction(() => document.querySelectorAll('#itube .rc').length >= 3, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(600);
 
   return violations;
 }
@@ -3953,12 +3959,14 @@ async function checkSpaceToggle(browser) {
     // Click #itube-play once: this both toggles playback AND leaves the
     // button focused, which is the exact precondition for the double-toggle.
     // The Space keypress below is fired with NO artificial delay after the
-    // click — that back-to-back timing is load-bearing. With a gap (e.g. a
-    // 150ms wait) the click's toggle has already fully committed before
-    // Space is even dispatched, and the bug never shows up. Back-to-back,
-    // pre-fix code read a still-in-flight `.paused` and fired a second,
-    // canceling toggle; the coalesced togglePlayback()'s 300ms dedup is
-    // exactly what makes that safe now.
+    // click — that back-to-back timing is load-bearing, and it must STILL
+    // flip playback: two distinct gestures are two toggles. (A time-based
+    // dedup in togglePlayback used to eat this Space — masked for a long
+    // time because YouTube's leaked hotkey handler did the flip instead;
+    // once that leak was sealed the dedup's swallow became user-visible.
+    // The same-keystroke double this guards against — Space activating the
+    // focused button AND hitting the keydown handler — is prevented by the
+    // keydown path's preventDefault, which cancels native space-activation.)
     await page.click('#itube-play');
     const s1 = await page.evaluate(() => document.querySelector('#itube-stage video').paused);
     await page.keyboard.press(' ');

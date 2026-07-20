@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.19
+// @version      0.0.20
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -96,8 +96,10 @@
   const icon = (nodes) => {
     const s = document.createElementNS(SVGNS, 'svg');
     s.setAttribute('viewBox', '0 0 16 16');
-    s.setAttribute('width', '17');
-    s.setAttribute('height', '17');
+    // 16, not 17: 1:1 viewBox mapping keeps strokes crisp, and even sizing
+    // keeps icon+gap arithmetic on the spacing grid (24+16+12 = label x 52).
+    s.setAttribute('width', '16');
+    s.setAttribute('height', '16');
     for (const [tag, attrs] of nodes) {
       const n = document.createElementNS(SVGNS, tag);
       for (const k in attrs) n.setAttribute(k, attrs[k]);
@@ -487,14 +489,6 @@
     #itube ::selection {
       background: rgba(var(--accent-rgb), .3);
     }
-    #itube .sidebar-head {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      padding: 6px 12px 16px;
-      margin-bottom: 8px;
-      border-bottom: 1px solid var(--hairline);
-    }
     #itube .sidebar-logo-row {
       display: flex;
       align-items: center;
@@ -515,7 +509,7 @@
     }
     #itube .search-icon {
       position: absolute;
-      left: 14px;
+      left: 12px;
       top: 50%;
       transform: translateY(-50%);
       color: var(--muted);
@@ -528,6 +522,8 @@
       background: var(--surface);
       border: 1px solid var(--hairline);
       color: var(--text);
+      /* 40 = icon(12+16) + 12 gap: placeholder text starts on the exact same
+         x as the nav-row labels below. */
       padding: 0 16px 0 40px;
       font-size: 14px;
       outline: none;
@@ -816,6 +812,17 @@
       padding: 14px 12px 16px;
     }
     #itube .sidebar-head {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      /* No horizontal inset: head children (logo row, search box) span the
+         same column as the nav-row pills, so BOX edges align. Icon alignment
+         at x=24 comes from each child's own internal padding (.search-icon
+         left:12, nav-row padding:12), not from insetting the whole box —
+         insetting made the search box 24px narrower than the pills below. */
+      padding: 6px 0 16px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--hairline);
       position: sticky;
       top: -14px;
       z-index: 2;
@@ -9466,7 +9473,6 @@
     let ui = null;
     let wired = null;
     let lastVideoId = null;
-    let lastToggleAt = 0;
     // Drive playback through YouTube's player API, not just the raw <video>.
     // Pausing only the element leaves the player's own state machine at
     // "playing", and its controller reconciles by re-playing the element a
@@ -9486,12 +9492,15 @@
         v.pause();
       }
     };
+    // No time-based dedup here: it used to eat a deliberate Space arriving
+    // shortly after a play-button click (two DISTINCT gestures). The double
+    // it guarded against — Space both activating the focused bar button and
+    // hitting the keydown handler — is killed at the source instead: the
+    // keydown path preventDefault()s (cancelling native space-activation)
+    // and ignores key repeats.
     const togglePlayback = () => {
       const v = wired;
       if (!v) return;
-      const now = Date.now();
-      if (now - lastToggleAt < 300) return;
-      lastToggleAt = now;
       const willPlay = v.paused;
       setPlaying(willPlay);
       showOSD(willPlay ? ICONS.play : ICONS.pause, willPlay ? 'Playing' : 'Paused');
@@ -10322,8 +10331,11 @@
       switch (e.key) {
         case ' ':
         case 'k':
+          // preventDefault also cancels native space-activation of a focused
+          // bar button — without it one keystroke would toggle twice (the
+          // button's click AND this handler). Held-key repeats don't strobe.
           e.preventDefault();
-          togglePlayback();
+          if (!e.repeat) togglePlayback();
           break;
         case 'j':
           e.preventDefault();
