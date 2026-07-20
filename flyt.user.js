@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.15
+// @version      0.0.16
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -403,8 +403,8 @@
       --muted: #8b93a6;
       --dim: #7b8296;
       --accent: #3dff6e;
-      --accent-solid: #2ee85f;
-      --on-accent: #03170b;
+      --accent-solid: #3dff6e;
+      --on-accent: #04140a;
       --accent-rgb: 61, 255, 110;
       --hairline: rgba(var(--accent-rgb), .12);
       --surface: rgba(var(--accent-rgb), .05);
@@ -434,8 +434,9 @@
       filter: brightness(1.06);
     }
     #itube .watch-action-btn:hover:not(:disabled),
-    #itube .watch-like-btn:hover:not(:disabled),
-    #itube .watch-dislike-btn:hover:not(:disabled),
+    #itube .watch-likes:hover,
+    #itube .watch-tool:hover:not(:disabled),
+    #itube .settings-select:hover,
     #itube .comments-sort-btn:hover,
     #itube .search-filter-select:hover,
     #itube .signin-btn:hover,
@@ -470,9 +471,18 @@
     }
     #itube .sidebar,
     #itube .content,
-    #itube .watch-right {
+    #itube .watch-right,
+    #itube .queue-list,
+    #itube .tool-menu,
+    #itube .itube-popup-panel,
+    #itube .settings-panel,
+    #itube .cmdk-list,
+    #itube .following-table-wrap {
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, .18) transparent;
+    }
+    #itube ::selection {
+      background: rgba(var(--accent-rgb), .3);
     }
     #itube .sidebar-head {
       display: flex;
@@ -577,10 +587,11 @@
       }
     }
     #itube .search-suggest-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      /* text-only rows: block + line-height, NOT flex — text-overflow never
+         applies to a flex container, so long suggestions hard-clipped. */
+      display: block;
       height: 32px;
+      line-height: 32px;
       padding: 0 10px;
       border-radius: 8px;
       color: var(--text);
@@ -750,7 +761,7 @@
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      background: #04141c;
+      background: var(--on-accent);
       transition: left var(--tr);
     }
     #itube .brand-tile {
@@ -1457,7 +1468,9 @@
       border-radius: 50%;
     }
     #itube .watch-channel-info {
-      flex: none;
+      /* 0 1 auto, not none — min-width:0 is inert on a non-shrinking flex
+         item, so a long unbroken channel name shoved the subscribe button. */
+      flex: 0 1 auto;
       min-width: 0;
     }
     #itube .watch-channel-name {
@@ -1540,7 +1553,7 @@
       margin-top: 0;
       padding: 0 12px;
       border-radius: var(--r-md);
-      background: rgba(0, 0, 0, .18);
+      background: var(--surface);
       border: 0 solid var(--hairline);
       box-sizing: border-box;
       transition: max-height var(--tr), opacity var(--tr), margin-top var(--tr), padding var(--tr), border-width var(--tr);
@@ -1903,7 +1916,7 @@
     }
     #itube .rail-tab:disabled {
       cursor: default;
-      opacity: .5;
+      opacity: .4;
     }
     #itube .rail-panel {
       min-width: 0;
@@ -2310,7 +2323,8 @@
       filter: brightness(1.06);
     }
     #itube .c-link:focus-visible ~ .c-thumb,
-    #itube .row-link:focus-visible ~ .row-thumb {
+    #itube .row-link:focus-visible ~ .row-thumb,
+    #itube .rc-link:focus-visible ~ .rc-thumb {
       outline: 1px solid var(--accent);
       outline-offset: 2px;
     }
@@ -2338,6 +2352,7 @@
       margin: 0;
       font-size: 16px;
       font-weight: 600;
+      line-height: 1.3;
       letter-spacing: -.01em;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -2589,7 +2604,7 @@
       gap: 8px 12px;
       padding: 14px 16px;
       border-radius: 0 0 var(--r-lg) var(--r-lg);
-      background: linear-gradient(to top, rgba(7, 8, 13, .97) 20%, rgba(7, 8, 13, .82) 60%, rgba(7, 8, 13, .55));
+      background: linear-gradient(to top, rgba(6, 7, 12, .97) 20%, rgba(6, 7, 12, .82) 60%, rgba(6, 7, 12, .55));
       box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), .22);
       border: none;
       color: #fff;
@@ -2819,7 +2834,10 @@
       }
       #itube .related-wrap {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        /* .rc-thumb is a fixed 168px — a 220px column floor left ~30px for
+           the card body (titles clamped to ~2 chars/line). 300px keeps the
+           horizontal card readable at every auto-fill width. */
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
         gap: 16px 12px;
       }
       #itube .queue-wrap,
@@ -2953,6 +2971,20 @@
         flex-wrap: wrap;
         row-gap: 8px;
       }
+      /* The rail breakpoint (1100px) hides the sign-in row because the text
+         button can't fit a 72px rail — in the top-bar layout there's room
+         again, and a signed-out user needs SOME sign-in affordance. */
+      #itube .sidebar-signin-row {
+        display: block;
+        flex: none;
+      }
+      /* 246px thumbs don't leave a readable row body on phone-ish widths. */
+      #itube .row-thumb,
+      #itube .row-skel-thumb {
+        width: 160px;
+        flex: 0 0 160px;
+        height: 90px;
+      }
     }
     #itube-boot {
       position: fixed;
@@ -2963,7 +2995,7 @@
       align-items: center;
       justify-content: center;
       gap: 16px;
-      background: #0b0c10;
+      background: #06070c;
       color: #a2a7b3;
       font-family: -apple-system, system-ui, sans-serif;
       opacity: 1;
@@ -2998,7 +3030,7 @@
       height: 100%;
       width: 40%;
       border-radius: 999px;
-      background: #3dff6e;
+      background: var(--itube-boot-accent, #3dff6e);
       animation: itube-boot-progress 1.1s ease-in-out infinite;
     }
     @keyframes itube-boot-progress {
@@ -3114,6 +3146,10 @@
     #itube .settings-swatch:hover {
       box-shadow: 0 0 0 2px var(--accent);
     }
+    /* Hovering the selected swatch must not discard its selection ring. */
+    #itube .settings-swatch.selected:hover {
+      box-shadow: 0 0 0 2px var(--raised), 0 0 0 3px var(--accent);
+    }
     #itube .settings-color {
       width: 26px;
       height: 26px;
@@ -3138,9 +3174,6 @@
       color: var(--text);
       font: 500 13px -apple-system, system-ui, sans-serif;
       cursor: pointer;
-    }
-    #itube .settings-select:hover {
-      border-color: var(--accent);
     }
     #itube .settings-toggle {
       width: 52px;
@@ -3182,6 +3215,7 @@
     }
     #itube .settings-keyword-input:focus {
       border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
     }
     #itube .settings-keyword-add {
       height: 32px;
@@ -3274,7 +3308,9 @@
       align-items: flex-start;
       justify-content: center;
       padding-top: 12vh;
-      z-index: 13000;
+      /* Above the popup overlay (14000): opening the palette over a
+         description/transcript popup must not bury it under the dim scrim. */
+      z-index: 15000;
     }
     #itube .cmdk-overlay.open {
       display: flex;
@@ -3446,7 +3482,7 @@
     }
     #itube .following-sort-btn:disabled {
       cursor: default;
-      opacity: .5;
+      opacity: .4;
     }
     #itube .following-chan-cell {
       display: flex;
@@ -3577,6 +3613,18 @@
   const bootBar = document.createElement('div');
   bootBar.className = 'itube-boot-bar';
   bootOverlay.append(bootMark, bootLabel, bootBar);
+  // #itube-boot sits outside #itube so it can't read the accent vars — but a
+  // Violet/Amber user shouldn't get a green boot screen. Inject the persisted
+  // accent inline (falls back to the stylesheet's green when unset/invalid).
+  // NOTE: savedAccent()/hexToRgb() are declared much later — using them here
+  // would hit their temporal dead zone at document-start.
+  {
+    const bootAccent = lsGet('itube-accent');
+    if (bootAccent && /^#[0-9a-f]{6}$/i.test(bootAccent.trim())) {
+      bootMark.style.background = bootAccent;
+      bootBar.style.setProperty('--itube-boot-accent', bootAccent);
+    }
+  }
 
   const mountBoot = () => {
     const root = document.documentElement;
@@ -3648,15 +3696,23 @@
     return rounded + scale[1];
   };
 
+  // Suffixes come localized like everything else: "1,2 тыс." must parse as
+  // 1200, not fall to the no-suffix branch and become 12. Same locale set as
+  // parseRelativeTime (en/de/uk/ru).
+  const COUNT_SUFFIXES = [
+    [/^(тыс|тис)/i, 1e3], [/^k/i, 1e3],
+    [/^(млн|mio)/i, 1e6], [/^m(?!rd)/i, 1e6],
+    [/^(млрд|mrd)/i, 1e9], [/^b/i, 1e9],
+  ];
   const parseCount = (text) => {
     if (typeof text !== 'string') return null;
-    const m = text.replace(/\s/g, '').match(/([\d.,]+)([KMB])?/i);
+    const m = text.replace(/\s/g, '').match(/([\d.,]+)(тыс|тис|млн|млрд|Mio|Mrd|[KMB])?\.?/i);
     if (!m) return null;
-    const suffix = (m[2] || '').toUpperCase();
-    if (suffix) {
+    if (m[2]) {
       const n = parseFloat(m[1].replace(',', '.'));
       if (!Number.isFinite(n)) return null;
-      return Math.round(n * (suffix === 'K' ? 1e3 : suffix === 'M' ? 1e6 : 1e9));
+      const mult = COUNT_SUFFIXES.find(([re]) => re.test(m[2]))?.[1] || 1;
+      return Math.round(n * mult);
     }
     const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
     return Number.isFinite(n) ? n : null;
@@ -3967,6 +4023,11 @@
 
   const getPublished = (node) => node?.publishedTimeText?.simpleText || null;
 
+  // Lockup metadata rows come pre-localized; match the same locales
+  // parseRelativeTime handles (en/de/uk/ru) or the rows misfile — the view
+  // count would land in the channel slot on any non-English UI.
+  const LOCKUP_VIEWS_RE = /views?|watching|aufrufe|zuschauer|перегляд|просмотр|глядач|зрител/i;
+
   const RELATIVE_TIME_UNITS = [
     [/second|секунд|sekunde/, 1],
     [/minute|хвилин|минут/, 60],
@@ -4056,13 +4117,13 @@
     return {
       id,
       title,
-      channel: rest.find((t) => !/views?|ago|watching/i.test(t)) || '',
+      channel: rest.find((t) => !LOCKUP_VIEWS_RE.test(t) && parseRelativeTime(t) == null && !/^\d/.test(t)) || '',
       channelHref: channelHrefFrom(meta?.image?.decoratedAvatarViewModel?.rendererContext?.commandContext?.onTap)
         || channelHrefFrom(findNode(meta?.image?.avatarStackViewModel, (n) => n?.browseEndpoint)),
       thumb,
       duration: texts.find((t) => /^\d+:\d\d/.test(t)) || '',
-      views: rest.find((t) => /views?|watching/i.test(t)) || '',
-      published: rest.find((t) => /ago/i.test(t)) || '',
+      views: rest.find((t) => LOCKUP_VIEWS_RE.test(t)) || '',
+      published: rest.find((t) => parseRelativeTime(t) != null) || '',
       snippet: '',
     };
   };
@@ -4226,15 +4287,30 @@
     return tokens;
   };
 
-  const findCommentsToken = (root) => {
-    const section = findNode(root, (n) => n?.itemSectionRenderer?.sectionIdentifier === 'comment-item-section')?.itemSectionRenderer;
-    if (section) {
-      const t = findContinuationToken(section);
+  // The comments section, sort menu and header all live in the same `next`
+  // response — one walk collects all three instead of three full-tree
+  // findNodes per watch navigation.
+  const collectCommentsRefs = (root) => {
+    const refs = { section: null, sortMenu: null, header: null };
+    walk(root, (n) => {
+      if (!refs.section && n?.itemSectionRenderer?.sectionIdentifier === 'comment-item-section') refs.section = n.itemSectionRenderer;
+      if (!refs.sortMenu && n?.sortFilterSubMenuRenderer) refs.sortMenu = n.sortFilterSubMenuRenderer;
+      if (!refs.header && n?.commentsHeaderRenderer) refs.header = n.commentsHeaderRenderer;
+      if (refs.section && refs.sortMenu && refs.header) return WALK_STOP;
+    });
+    return refs;
+  };
+
+  const commentsTokenFromRefs = (refs, root) => {
+    if (refs.section) {
+      const t = findContinuationToken(refs.section);
       if (t) return t;
     }
     const tokens = findAllContinuationTokens(root);
     return tokens.length ? tokens[tokens.length - 1] : null;
   };
+
+  const findCommentsToken = (root) => commentsTokenFromRefs(collectCommentsRefs(root), root);
 
   const shortSortLabel = (title) => {
     const t = (title || '').toLowerCase();
@@ -4243,8 +4319,7 @@
     return title;
   };
 
-  const findCommentsSortOptions = (root) => {
-    const node = findNode(root, (n) => n?.sortFilterSubMenuRenderer)?.sortFilterSubMenuRenderer;
+  const sortOptionsFromMenu = (node) => {
     const items = node?.subMenuItems;
     if (!Array.isArray(items)) return [];
     return items
@@ -4307,9 +4382,9 @@
   };
 
   const getCommentAvatar = (legacy, author) => (
-    (Array.isArray(legacy?.authorThumbnail?.thumbnails) && legacy.authorThumbnail.thumbnails.length
-      ? legacy.authorThumbnail.thumbnails[legacy.authorThumbnail.thumbnails.length - 1]?.url
-      : null)
+    // Comment avatars paint at 34px — the smallest sufficient variant, not
+    // the largest (×50 comments per page, the decode cost adds up).
+    pickThumbUrl(legacy?.authorThumbnail?.thumbnails, 68)
     || author?.avatarThumbnailUrl
     || author?.avatar?.thumbnails?.[0]?.url
     || null
@@ -4375,18 +4450,16 @@
     return out;
   };
 
-  const getCommentsCount = (root) => {
-    const t = findNode(root, (n) => n?.commentsHeaderRenderer)?.commentsHeaderRenderer?.countText;
+  const countLabelFromHeader = (header) => {
+    const t = header?.countText;
     if (!t) return null;
-    return t.simpleText || (Array.isArray(t.runs) ? t.runs.map((r) => r?.text || '').join('') : null);
-  };
-
-  const getCommentsCountLabel = (root) => {
-    const raw = getCommentsCount(root);
+    const raw = t.simpleText || (Array.isArray(t.runs) ? t.runs.map((r) => r?.text || '').join('') : null);
     if (!raw) return null;
     const n = parseCount(raw);
     return Number.isFinite(n) ? formatCompact(n) : null;
   };
+
+  const getCommentsCountLabel = (root) => countLabelFromHeader(findNode(root, (n) => n?.commentsHeaderRenderer)?.commentsHeaderRenderer);
 
   const fmt = (s) => {
     if (!isFinite(s)) return 'LIVE';
@@ -4571,6 +4644,23 @@
     return el;
   };
 
+  // "Show more" only appears when the comment text actually overflows its
+  // clamp — that needs a scrollHeight read per row. One rAF per row meant up
+  // to 20 read/write pairs interleaving in a single frame (each write
+  // invalidating the next read's layout); batching does all reads first,
+  // then all writes, in one shared rAF per append batch.
+  let clampChecks = [];
+  const scheduleClampCheck = (text, showMore) => {
+    clampChecks.push([text, showMore]);
+    if (clampChecks.length > 1) return;
+    requestAnimationFrame(() => {
+      const batch = clampChecks;
+      clampChecks = [];
+      const overflowing = batch.map(([t]) => t.isConnected && t.scrollHeight > t.clientHeight + 1);
+      batch.forEach(([, btn], i) => { if (overflowing[i]) btn.style.display = ''; });
+    });
+  };
+
   const createCommentRow = (item) => {
     const row = document.createElement('div');
     row.className = 'comment-row';
@@ -4634,9 +4724,7 @@
       const expanded = text.classList.toggle('expanded');
       showMore.textContent = expanded ? 'Show less' : 'Show more';
     });
-    requestAnimationFrame(() => {
-      if (text.scrollHeight > text.clientHeight + 1) showMore.style.display = '';
-    });
+    scheduleClampCheck(text, showMore);
 
     const likes = document.createElement('div');
     likes.className = 'comment-likes';
@@ -4727,16 +4815,28 @@
     const n = parseInt(m[1], 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   };
+  // WCAG relative luminance (linearized sRGB) — the old gamma-encoded luma
+  // put white text on Coral/Magenta at ~3:1 contrast. Pick whichever of
+  // dark/white actually contrasts more against the solid accent.
+  const relLuminance = ([r, g, b]) => {
+    const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  };
+  const bestOnAccent = (rgb) => {
+    const L = relLuminance(rgb);
+    const contrastVsWhite = (1.0 + 0.05) / (L + 0.05);
+    const contrastVsDark = (L + 0.05) / (relLuminance([4, 20, 10]) + 0.05);
+    return contrastVsDark >= contrastVsWhite ? '#04140a' : '#ffffff';
+  };
   const setAccent = (hex, persist) => {
     const rgb = hexToRgb(hex);
     if (!rgb) return;
     const accentRoot = document.getElementById('itube');
     if (!accentRoot) return;
-    const lum = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
     accentRoot.style.setProperty('--accent', hex);
     accentRoot.style.setProperty('--accent-rgb', rgb.join(', '));
     accentRoot.style.setProperty('--accent-solid', hex);
-    accentRoot.style.setProperty('--on-accent', lum > 0.6 ? '#04140a' : '#ffffff');
+    accentRoot.style.setProperty('--on-accent', bestOnAccent(rgb));
     if (persist) lsSet('itube-accent', hex);
   };
 
@@ -5017,7 +5117,7 @@
     if (!res) { accountLoaded = false; return; }
     const header = findNode(res, (n) => n && n.activeAccountHeaderRenderer)?.activeAccountHeaderRenderer;
     const thumbs = header?.accountPhoto?.thumbnails;
-    const url = Array.isArray(thumbs) && thumbs.length ? thumbs[thumbs.length - 1]?.url : null;
+    const url = pickThumbUrl(thumbs, 96);
     if (url) { avatarImg.src = url; acctHeadImg.src = url; }
     const name = header?.accountName?.simpleText;
     if (name) acctName.textContent = name;
@@ -5115,7 +5215,9 @@
   // underlying object matched twice (e.g. by the catch-all AND a specific
   // branch, since `walk()` visits nested objects separately) is only added
   // once.
-  const lastThumbUrl = (thumbs) => (Array.isArray(thumbs) && thumbs.length ? thumbs[thumbs.length - 1]?.url : null);
+  // Guide avatars paint at 24–28px — request the smallest variant that covers
+  // that (not the 176px original: ~25× the pixels across hundreds of rows).
+  const lastThumbUrl = (thumbs) => pickThumbUrl(thumbs, 64);
   const textOf = (obj) => obj?.simpleText || obj?.runs?.[0]?.text || null;
 
   const collectGuideChannels = (root, seenIds = new Set()) => {
@@ -5227,7 +5329,7 @@
     // round trip). On every OTHER page (e.g. at boot, feeding the sidebar),
     // window.ytInitialData is that page's own data, not FEchannels', so this
     // must be gated on the pathname or it would misread unrelated data.
-    let feRes = location.pathname === '/feed/channels' ? window.ytInitialData : null;
+    let feRes = (location.pathname === '/feed/channels' && !hadSpaNav) ? window.ytInitialData : null;
     if (feRes) out.push(...collectGuideChannels(feRes, seenIds));
     if (!out.length) {
       feRes = await innertube('browse', { browseId: 'FEchannels' });
@@ -5593,7 +5695,26 @@
   const GUIDE_MAX_WAIT = 15000;
   const GUIDE_RETRY_MS = 600;
   const GUIDE_MAX_ATTEMPTS = 3;
-  let guideChannelsCache = null;
+  // Subscriptions change rarely — persist the collected list so the sidebar
+  // and subscribe-state source of truth are correct instantly on boot instead
+  // of after 5–25 sequential FEchannels pages. Subscribe/unsubscribe actions
+  // update both the live cache and the stored copy.
+  const GUIDE_CACHE_KEY = 'itube-guide-cache';
+  const GUIDE_CACHE_TTL = 6 * 3600 * 1000;
+  const readGuideCacheStore = () => {
+    try {
+      const parsed = JSON.parse(lsGet(GUIDE_CACHE_KEY) || 'null');
+      if (!parsed || !Array.isArray(parsed.channels) || !parsed.channels.length) return null;
+      if (typeof parsed.at !== 'number' || Date.now() - parsed.at > GUIDE_CACHE_TTL) return null;
+      return parsed.channels;
+    } catch (e) { return null; }
+  };
+  let guideChannelsCache = readGuideCacheStore();
+  let guideChannelsFailed = false;
+  const persistGuideCache = () => {
+    if (!guideChannelsCache || !guideChannelsCache.length) return;
+    lsSet(GUIDE_CACHE_KEY, JSON.stringify({ at: Date.now(), channels: guideChannelsCache }));
+  };
   let guideChannelsPromise = null;
   let guideChannelsScheduled = false;
   let guideAttempts = 0;
@@ -5632,7 +5753,7 @@
   // source that's actually correct, so prefer it and only fall back to the
   // button payload while the guide hasn't loaded yet.
   const subscribedByGuide = (channelId) => {
-    if (!channelId || !guideChannelsCache) return null;
+    if (!channelId || !guideChannelsCache || guideChannelsFailed) return null;
     return guideChannelsCache.some((ch) => ch.browseId === channelId);
   };
   // Calls `cb` once the guide list has settled (loaded or given up), kicking
@@ -5658,11 +5779,18 @@
       if (idx === -1) return;
       guideChannelsCache = guideChannelsCache.filter((ch) => ch.browseId !== channelId);
     }
+    persistGuideCache();
     paintGuideChannels();
   };
+  // The empty-array sentinel stops the onGuideReady polls and the refetch
+  // loop, but it must not read as "authoritatively zero subscriptions" —
+  // guideChannelsFailed marks it as a give-up so subscribedByGuide answers
+  // "unknown" (fall back to per-channel state) and the Following page says
+  // "couldn't load" instead of "you're not following anything".
   const guideRetry = (delay) => {
     if (guideAttempts >= GUIDE_MAX_ATTEMPTS) {
       console.warn('[itube] guide channels unavailable after ' + guideAttempts + ' attempts');
+      guideChannelsFailed = true;
       guideChannelsCache = [];
       return;
     }
@@ -5674,6 +5802,7 @@
     if (!cfg()?.INNERTUBE_API_KEY && !collectGuideChannels(window.ytInitialGuideData).length) {
       if (Date.now() - guideWaitStart > GUIDE_MAX_WAIT) {
         console.warn('[itube] no INNERTUBE_API_KEY for guide after ' + GUIDE_MAX_WAIT + 'ms');
+        guideChannelsFailed = true;
         guideChannelsCache = [];
         return;
       }
@@ -5684,7 +5813,9 @@
       .then((channels) => {
         guideChannelsPromise = null;
         if (!channels) { guideRetry(GUIDE_RETRY_MS * guideAttempts + GUIDE_RETRY_MS); return; }
+        guideChannelsFailed = false;
         guideChannelsCache = channels;
+        persistGuideCache();
         paintGuideChannels();
       })
       .catch((e) => {
@@ -6002,6 +6133,9 @@
   let lastScroll = 0;
   content.addEventListener('scroll', () => { lastScroll = Date.now(); }, { passive: true });
   let spaNav = false;
+  // Latches once any SPA navigation happens: window.ytInitialData stops being
+  // "the payload for the current pathname" the moment the router first moves.
+  let hadSpaNav = false;
 
   const LIST_CACHE_MAX = 8;
   const listCache = new Map();
@@ -6447,7 +6581,7 @@
       return CHANNEL_TABS.includes(seg) ? seg : 'videos';
     };
     const channelBase = () => {
-      const m = location.pathname.match(/^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+)/);
+      const m = location.pathname.match(/^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)/);
       return m ? m[0] : location.pathname;
     };
 
@@ -6518,7 +6652,7 @@
 
     let headerBuilt = false;
     const paintHeader = (res) => {
-      if (headerBuilt) return;
+      if (cancelled || headerBuilt) return;
       const getHeaderRenderer = (data) => (
         findNode(data, (n) => n?.c4TabbedHeaderRenderer)?.c4TabbedHeaderRenderer
         || findNode(data, (n) => n?.pageHeaderRenderer)?.pageHeaderRenderer
@@ -7148,6 +7282,35 @@
       tr.appendChild(td);
     };
 
+    const lastUploadContent = (row) => {
+      if (!row.enriched) return metricCell(row, null);
+      if (row.lastUploadText && row.lastUploadTs != null) {
+        const span = document.createElement('span');
+        span.textContent = row.lastUploadText;
+        span.title = 'Approx. ' + new Date(row.lastUploadTs).toLocaleString();
+        return span;
+      }
+      return dashOrText(row.lastUploadText);
+    };
+
+    // When a single row's enrichment settles, swap that row's four metric
+    // cells in place instead of rebuilding the whole table. Sorting is locked
+    // until every row is enriched, so the order can't change mid-load and a
+    // full rebuild per settle bought nothing but node churn (500 channels ≈
+    // 500 rebuilds × ~5k nodes).
+    const updateRowCells = (row) => {
+      const tds = row.tr.children;
+      const fill = (td, content) => {
+        if (!td) return;
+        if (typeof content === 'string') td.replaceChildren(document.createTextNode(content));
+        else td.replaceChildren(content);
+      };
+      fill(tds[1], metricCell(row, row.subsText));
+      fill(tds[2], metricCell(row, row.videosText));
+      fill(tds[3], lastUploadContent(row));
+      fill(tds[4], metricCell(row, row.freqText));
+    };
+
     const renderRows = () => {
       // Sorting stays disabled until every row is enriched — either freshly
       // fetched or served instantly from the persistent cache — so the sort
@@ -7198,19 +7361,9 @@
 
         appendCell(tr, metricCell(row, row.subsText));
         appendCell(tr, metricCell(row, row.videosText));
-
-        if (!row.enriched) {
-          appendCell(tr, metricCell(row, null));
-        } else if (row.lastUploadText && row.lastUploadTs != null) {
-          const span = document.createElement('span');
-          span.textContent = row.lastUploadText;
-          span.title = 'Approx. ' + new Date(row.lastUploadTs).toLocaleString();
-          appendCell(tr, span);
-        } else {
-          appendCell(tr, dashOrText(row.lastUploadText));
-        }
-
+        appendCell(tr, lastUploadContent(row));
         appendCell(tr, metricCell(row, row.freqText));
+        row.tr = tr;
         return tr;
       };
 
@@ -7313,7 +7466,10 @@
           done++;
           if (gen === followingGeneration) {
             updateStatus(done, total);
-            scheduleRender();
+            if (row.tr && row.tr.isConnected) updateRowCells(row);
+            else scheduleRender();
+            // Once everything settled, one full render re-enables sorting.
+            if (done === total) scheduleRender();
           }
           // Throttle, don't hammer: a channel `browse` fetch per followed
           // channel adds up fast and reads as scraping to YouTube's abuse
@@ -7330,15 +7486,20 @@
     };
 
     const loadChannels = async () => {
-      const channels = guideChannelsCache || await fetchGuideChannels();
+      // A failed-and-gave-up cache ([] with the failed flag) is not an answer —
+      // retry the fetch on this visit instead of reporting "no subscriptions".
+      const cached = guideChannelsFailed ? null : guideChannelsCache;
+      const channels = (cached && cached.length ? cached : null) || await fetchGuideChannels();
       if (gen !== followingGeneration) return;
       if (!channels || !channels.length) {
-        statusEl.textContent = channels ? "You're not following any channels yet." : "Couldn't load your followed channels.";
+        statusEl.textContent = (channels && !guideChannelsFailed) ? "You're not following any channels yet." : "Couldn't load your followed channels.";
         tableWrap.style.display = 'none';
         return;
       }
-      if (!guideChannelsCache) {
+      if (!guideChannelsCache || guideChannelsFailed || !guideChannelsCache.length) {
+        guideChannelsFailed = false;
         guideChannelsCache = channels;
+        persistGuideCache();
         paintGuideChannels();
       }
       rows = channels.map((ch) => {
@@ -7380,6 +7541,15 @@
   };
 
   const player = () => document.getElementById('movie_player');
+  // True/false when the player can report caption state, null when it can't
+  // (captions module not loaded — getOption throws then; never force-load it,
+  // cycling loadModule('captions') wedges the player).
+  const ccActive = (p) => {
+    try {
+      const track = p?.getOption?.('captions', 'track');
+      return !!(track && (track.languageCode || track.vss_id));
+    } catch (e) { return null; }
+  };
 
   const playerVolume = () => {
     const p = player();
@@ -7820,6 +7990,10 @@
       const q = p && p.getPlaybackQuality ? p.getPlaybackQuality() : '';
       tQuality.v.textContent = q && q !== 'unknown' ? (QUALITY_LABELS[q] || q) : 'Auto';
       tCC.v.textContent = 'CC';
+      // Read real caption state so the indicator can't drift from the 'c'
+      // shortcut (which toggles subtitles without touching this button).
+      const cc = ccActive(p);
+      if (cc !== null) tCC.b.classList.toggle('active', cc);
       syncAudioTrack(p);
       tAuto.b.classList.toggle('active', autoplayEnabled);
       tAuto.v.textContent = autoplayEnabled ? 'On' : 'Off';
@@ -8170,7 +8344,13 @@
     tSpeed.b.addEventListener('click', (e) => { e.stopPropagation(); openSpeedMenu(); });
     tQuality.b.setAttribute('aria-haspopup', 'menu');
     tQuality.b.addEventListener('click', (e) => { e.stopPropagation(); openQualityMenu(); });
-    tCC.b.addEventListener('click', () => { player()?.toggleSubtitles?.(); tCC.b.classList.toggle('active'); });
+    tCC.b.addEventListener('click', () => {
+      player()?.toggleSubtitles?.();
+      // Optimistic flip for instant feedback; the syncTools pass corrects it
+      // from the player's real state (toggleSubtitles may be a no-op).
+      const cc = ccActive(player());
+      tCC.b.classList.toggle('active', cc === null ? !tCC.b.classList.contains('active') : cc);
+    });
     tAudioTrack.b.addEventListener('click', () => {
       const p = player();
       if (!p || audioTracks.length < 2) return;
@@ -8206,10 +8386,11 @@
       showOSD(ICONS.tools, audioOnly ? 'Audio only on' : 'Audio only off');
     });
 
-    const refreshActions = (data, details) => {
+    const refreshActions = (data, details, ownerId) => {
       signInHint.style.display = 'none';
       actionsVideoId = resolveVideoId();
-      actionsChannelId = resolveOwnerChannelId(data, details);
+      // renderMeta already resolved the owner id (a full-tree walk) — reuse it.
+      actionsChannelId = ownerId !== undefined ? ownerId : resolveOwnerChannelId(data, details);
 
       const likeState = readLikeState(data);
       liked = likeState.liked;
@@ -8398,6 +8579,7 @@
       transcriptExpanded = true;
       transcriptPopupWire.open();
       loadTranscript(resolveVideoId());
+      if (!transcriptLinesRendered && transcriptSegments.length) renderTranscriptLines();
     };
     descBtn.addEventListener('click', openDescPopup);
     transcriptBtn.addEventListener('click', openTranscriptPopup);
@@ -8647,7 +8829,7 @@
       if (title.textContent) {
         const t = title.textContent;
         setTitle(t);
-        setTimeout(() => { if (title.textContent === t) setTitle(t); }, 1500);
+        setTimeout(() => { if (title.isConnected && title.textContent === t) setTitle(t); }, 1500);
       }
       unavailable.style.display = 'none';
       const owner = secondary?.owner?.videoOwnerRenderer;
@@ -8675,7 +8857,7 @@
         || null;
       if (avatarUrl) avatar.src = avatarUrl;
       else avatar.removeAttribute('src');
-      refreshActions(data, details);
+      refreshActions(data, details, ownerId);
       const viewsText = primary?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText
         || (details?.viewCount ? details.viewCount + ' views' : '');
       const dateText = primary?.dateText?.simpleText || '';
@@ -8800,7 +8982,7 @@
       queueWrap.appendChild(panel);
     };
 
-    const updateQueue = async (videoId) => {
+    const updateQueue = async (videoId, prefetched) => {
       const listId = new URLSearchParams(location.search).get('list');
       if (!listId) {
         currentPlaylist = null;
@@ -8809,10 +8991,15 @@
         return;
       }
       if (!currentPlaylist || currentPlaylist.id !== listId) {
-        const gen = renderGeneration;
-        const res = await innertube('next', { videoId, playlistId: listId });
-        if (gen !== renderGeneration || listId !== new URLSearchParams(location.search).get('list')) return;
-        const panel = res ? extractPlaylistPanel(res) : null;
+        // renderWatchFor already fetched `next` with the playlistId — reuse
+        // its response for the panel instead of refetching the endpoint.
+        let panel = prefetched ? extractPlaylistPanel(prefetched) : null;
+        if (!panel) {
+          const gen = renderGeneration;
+          const res = await innertube('next', { videoId, playlistId: listId });
+          if (gen !== renderGeneration || listId !== new URLSearchParams(location.search).get('list')) return;
+          panel = res ? extractPlaylistPanel(res) : null;
+        }
         currentPlaylist = panel ? { id: listId, title: panel.title, items: panel.items } : null;
       }
       renderQueuePanel(videoId);
@@ -8835,6 +9022,7 @@
     let transcriptGeneration = 0;
     let transcriptSegments = [];
     let transcriptLineEls = [];
+    let transcriptLinesRendered = false;
     let transcriptActiveIndex = -1;
     let transcriptExpanded = false;
     let transcriptLoading = false;
@@ -8849,6 +9037,7 @@
     transcriptSearch.addEventListener('input', applyTranscriptFilter);
 
     const renderTranscriptLines = () => {
+      transcriptLinesRendered = true;
       transcriptBody.replaceChildren();
       transcriptActiveIndex = -1;
       transcriptLineEls = transcriptSegments.map((seg) => {
@@ -8886,6 +9075,7 @@
       transcriptBody.replaceChildren();
       transcriptLineEls = [];
       transcriptSegments = [];
+      transcriptLinesRendered = false;
       transcriptActiveIndex = -1;
       transcriptExpanded = false;
       transcriptSearch.value = '';
@@ -8958,7 +9148,11 @@
       }
       transcriptSegments = segments;
       transcriptStatus.textContent = '';
-      renderTranscriptLines();
+      // Building one <button> per segment is ~16k nodes on a 3h video — only
+      // worth it once the popup is actually open. The opt-in eager load only
+      // needs the segments array to decide button visibility.
+      transcriptLinesRendered = false;
+      if (transcriptExpanded) renderTranscriptLines();
       transcriptSearch.style.display = '';
     };
 
@@ -9067,20 +9261,26 @@
       commentsLoading = false;
       commentsFetched = false;
       setRailTab('upnext');
-      commentsToken = findCommentsToken(data);
-      const label = getCommentsCountLabel(data);
+      const commentsRefs = collectCommentsRefs(data);
+      commentsToken = commentsTokenFromRefs(commentsRefs, data);
+      const label = countLabelFromHeader(commentsRefs.header);
       tabCommentsLabel.textContent = commentsToken ? 'Comments' : (fresh ? 'Comments are turned off.' : 'Comments');
       commentsCount.textContent = (commentsToken && label) ? ' · ' + label : '';
       tabComments.disabled = !commentsToken;
-      sortOptions = findCommentsSortOptions(data);
+      sortOptions = sortOptionsFromMenu(commentsRefs.sortMenu);
       activeSortIndex = 0;
       renderSortPills();
     };
-    resetComments(window.ytInitialData, !mountedFromSpa);
+    // On an SPA mount, window.ytInitialData is the BOOT page's payload (Home,
+    // a channel, …) — scanning it for a comments token would wire the tab to
+    // some unrelated continuation. Seed empty; renderWatchFor supplies the
+    // real payload right after.
+    resetComments(mountedFromSpa ? null : window.ytInitialData, !mountedFromSpa);
     resetTranscript();
 
-    let chapterSecs = parseChapters(window.ytInitialData);
+    let chapterSecs = parseChapters(mountedFromSpa ? null : window.ytInitialData);
     let storyboard = null;
+    let previewRects = null;
     let storyboardTries = 0;
     let ui = null;
     let wired = null;
@@ -9132,6 +9332,12 @@
     let sbVideoId = null;
     let sbAbort = null;
     const sbCache = new Map();
+    // Hygiene cap: one entry per distinct video in a watch session; evict the
+    // oldest (Map preserves insertion order) past 50.
+    const sbCacheSet = (id, segs) => {
+      if (sbCache.size >= 50 && !sbCache.has(id)) sbCache.delete(sbCache.keys().next().value);
+      sbCache.set(id, segs);
+    };
     const SB_CATS = ['sponsor', 'selfpromo', 'interaction'];
     const sbLoad = async (videoId) => {
       if (!sbEnabled) return;
@@ -9148,7 +9354,7 @@
         const url = 'https://sponsor.ajay.app/api/skipSegments/' + prefix + '?categories=' + encodeURIComponent(JSON.stringify(SB_CATS)) + '&actionType=skip';
         const res = await fetch(url, { credentials: 'omit', signal: sbAbort.signal });
         clearTimeout(to);
-        if (!res.ok) { sbCache.set(videoId, []); return; }
+        if (!res.ok) { sbCacheSet(videoId, []); return; }
         const data = await res.json();
         if (sbVideoId !== videoId) return;
         const segs = [];
@@ -9163,7 +9369,7 @@
           }
         }
         segs.sort((a, b) => a.start - b.start);
-        sbCache.set(videoId, segs);
+        sbCacheSet(videoId, segs);
         sbSegments = segs;
         renderSbMarkers();
       } catch (e) {}
@@ -9474,8 +9680,8 @@
     // descendant of the seekwrap it tracks — position it in pixels instead,
     // by comparing the seekwrap's rect to its own offset parent's (stageWrap).
     const positionPreview = (frac) => {
-      const layerRect = stageWrap.getBoundingClientRect();
-      const seekRect = ui.seekwrap.getBoundingClientRect();
+      const layerRect = previewRects ? previewRects.layer : stageWrap.getBoundingClientRect();
+      const seekRect = previewRects ? previewRects.seek : ui.seekwrap.getBoundingClientRect();
       ui.preview.style.left = (seekRect.left - layerRect.left + frac * seekRect.width) + 'px';
       ui.preview.style.bottom = (layerRect.bottom - seekRect.bottom + 24) + 'px';
     };
@@ -9510,10 +9716,14 @@
       }
     };
 
-    const syncAdState = () => {
+    // `v` is the already-located <video> when called from tick(); the
+    // MutationObserver path passes mutation records instead, so re-query then.
+    const syncAdState = (v) => {
       const p = player();
       if (!p) return;
-      const video = stage.querySelector('video') || document.querySelector('#itube-mini video') || document.querySelector('#movie_player video');
+      const video = (v instanceof HTMLVideoElement && v.isConnected)
+        ? v
+        : (stage.querySelector('video') || document.querySelector('#itube-mini video') || document.querySelector('#movie_player video'));
       if (adShowing()) {
         if (!adActive) {
           adActive = true;
@@ -9568,32 +9778,47 @@
     let showBar = () => {};
     const wireBar = (p, video) => {
       ui.live.addEventListener('click', () => {
+        const v = wired || video;
         if (p.seekToLiveHead) p.seekToLiveHead();
-        else if (isFinite(video.duration)) video.currentTime = video.duration - 2;
+        else if (isFinite(v.duration)) v.currentTime = v.duration - 2;
       });
 
 
+      // Rects are read once on pointerenter, not per pointermove — reading
+      // them between updatePreview's style writes forced a synchronous layout
+      // on every mouse move along the seekbar.
       ui.seekwrap.addEventListener('pointerenter', () => {
+        previewRects = null;
         if (storyboard && !ui.isLive) ui.preview.style.display = 'block';
       });
-      ui.seekwrap.addEventListener('pointerleave', () => { ui.preview.style.display = 'none'; });
+      ui.seekwrap.addEventListener('pointerleave', () => { ui.preview.style.display = 'none'; previewRects = null; });
       ui.seekwrap.addEventListener('pointermove', (e) => {
         if (ui.preview.style.display === 'none') return;
-        const rect = ui.seekwrap.getBoundingClientRect();
+        if (!previewRects) {
+          previewRects = { seek: ui.seekwrap.getBoundingClientRect(), layer: stageWrap.getBoundingClientRect() };
+        }
+        const rect = previewRects.seek;
         updatePreview(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)));
       });
 
-      ui.prev.addEventListener('click', () => p.previousVideo?.());
-      ui.next.addEventListener('click', () => p.nextVideo?.());
+      ui.prev.addEventListener('click', () => {
+        const { prevId, listId } = resolvePrevId();
+        if (prevId) watchNav(prevId, listId);
+      });
+      ui.next.addEventListener('click', () => {
+        const { nextId, listId } = resolveNextId();
+        if (nextId) watchNav(nextId, listId);
+      });
       ui.play.addEventListener('click', () => togglePlayback());
       ui.seek.addEventListener('pointerdown', () => { ui.scrubbing = true; });
       ui.seek.addEventListener('change', () => {
-        if (isFinite(video.duration)) video.currentTime = video.duration * ui.seek.value / 1000;
+        const v = wired || video;
+        if (isFinite(v.duration)) v.currentTime = v.duration * ui.seek.value / 1000;
         ui.scrubbing = false;
       });
       ui.mute.addEventListener('click', () => { setMuted(!isMuted()); });
       ui.vol.addEventListener('input', () => { setPlayerVolume(Number(ui.vol.value)); });
-      ui.pip.addEventListener('click', () => togglePiP(video));
+      ui.pip.addEventListener('click', () => togglePiP(wired || video));
       ui.shot.addEventListener('click', () => captureFrame());
       ui.fs.addEventListener('click', () => toggleFullscreen());
       theaterBtn = ui.theater;
@@ -9610,7 +9835,7 @@
         watchLeft.classList.remove('itube-cursor-hide');
         clearTimeout(hideTimer);
         hideTimer = setTimeout(() => {
-          if (!video.paused && !ui.bar.matches(':hover')) {
+          if (wired && !wired.paused && !ui.bar.matches(':hover')) {
             stage.classList.remove('show');
             if (isImmersive()) watchLeft.classList.add('itube-cursor-hide');
           }
@@ -9620,9 +9845,19 @@
       stage.addEventListener('mouseleave', () => {
         clearTimeout(hideTimer);
         watchLeft.classList.remove('itube-cursor-hide');
-        if (!video.paused) stage.classList.remove('show');
+        if (wired && !wired.paused) stage.classList.remove('show');
       }, { passive: true });
+    };
 
+    // Bind the transport listeners that live on the <video> ELEMENT (as
+    // opposed to the bar's own controls, wired once in wireBar). YouTube can
+    // swap in a fresh <video> mid-session — tick() already anticipates that
+    // (`wired !== video`) for ratechange/ended/volumechange, but these used to
+    // be bound once in wireBar to whatever element existed first, so after a
+    // swap the seekbar froze and the play icon desynced while sound played on.
+    // Called from the tick rebind branch for EVERY newly adopted element.
+    const wireVideoEl = (video) => {
+      if (!ui) return;
       video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); showBar(); updateMediaSessionMetadata(); }, bound);
       video.addEventListener('pause', () => { ui.play.replaceChildren(ICONS.play()); showBar(); updateMediaSessionMetadata(); }, bound);
       video.addEventListener('timeupdate', () => {
@@ -9672,7 +9907,7 @@
       renderTicks();
       resetComments(data);
       resetTranscript();
-      updateQueue(currentId);
+      updateQueue(currentId, data);
     };
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
 
@@ -9698,7 +9933,7 @@
         adObserver.observe(p, { attributes: true, attributeFilter: ['class'] });
         adObserved = p;
       }
-      syncAdState();
+      syncAdState(video);
       resumePlayback();
       if (toolsOpen) syncTools();
       if (video) sbSkipCheck(video);
@@ -9738,6 +9973,7 @@
 
       if (wired === video) return;
       wired = video;
+      wireVideoEl(video);
 
       video.playbackRate = desiredRate;
       video.addEventListener('ratechange', () => {
@@ -10002,7 +10238,11 @@
       descPopupWire.close();
       transcriptPopupWire.close();
       showMetaSkeleton();
-      const data = await innertube('next', { videoId });
+      // Ask for the playlist panel in the same `next` call when a list is in
+      // the URL — updateQueue used to refetch the same 1–2MB endpoint just to
+      // get the panel.
+      const listId = new URLSearchParams(location.search).get('list');
+      const data = await innertube('next', listId ? { videoId, playlistId: listId } : { videoId });
       if (gen !== renderGeneration) return;
       if (!data) { hideMetaSkeletonImmediate(); return; }
       chapterSecs = parseChapters(data);
@@ -10010,7 +10250,7 @@
       renderTicks();
       resetComments(data);
       resetTranscript();
-      updateQueue(videoId);
+      updateQueue(videoId, data);
     };
     watchApi = { renderWatchFor };
 
@@ -10325,7 +10565,7 @@
     spaNav = false;
   };
 
-  const spaRoute = () => { spaNav = true; route(); };
+  const spaRoute = () => { spaNav = true; hadSpaNav = true; route(); };
   const prefersReducedMotion = () => {
     if (lsGet('itube-reduce-motion') === '1') return true;
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
