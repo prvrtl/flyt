@@ -95,6 +95,7 @@ const {
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
 const { runChannelChecks } = require('./checks/channels');
+const { checkGeometry } = require('./checks/geometry');
 const { checkNodeBudget } = require('./checks/perf');
 const { checkGatedFeeds, checkHeaderSignIn, checkWatchActions } = require('./checks/signedout');
 const { checkSubscriptionsChronological, checkHomeOrderNotSorted } = require('./checks/feedorder');
@@ -245,6 +246,7 @@ const FUNCTIONAL_ENTRIES = [
   { subname: 'autoplaynext', label: 'autoplay to next video', page: 'autoplaynext', check: 'functional', errCheck: 'autoplay-next', arg: 'browser', run: (browser) => checkAutoplayNext(browser) },
   { subname: 'following', label: 'Following page (sortable channels table, mocked guide/browse)', page: 'following', check: 'functional', errCheck: 'following-page', arg: 'browser', run: (browser) => checkFollowingPage(browser) },
   { subname: 'playlists', label: 'Playlists library (nav row + signed-out prompt)', page: 'playlists', check: 'functional', errCheck: 'playlists-page', arg: 'browser', run: (browser) => checkPlaylistsPage(browser) },
+  { subname: 'geometry', label: 'Geometry invariants (sidebar column system, grid rhythm, watch columns, actions row)', page: 'geometry', check: 'functional', errCheck: 'geometry', arg: 'browser', run: (browser) => checkGeometry(browser) },
   { subname: 'channel-subscribe-state', label: 'channel page subscribe state derived from guide cache', page: 'channel', check: 'functional', errCheck: 'channel-subscribe-state', arg: 'browser', run: (browser) => checkChannelSubscribeState(browser) },
   { subname: 'watch-subscribe-state', label: 'watch page subscribe state derived from guide cache', page: 'watch', check: 'functional', errCheck: 'watch-subscribe-state', arg: 'browser', run: (browser) => checkWatchSubscribeState(browser) },
 ];
