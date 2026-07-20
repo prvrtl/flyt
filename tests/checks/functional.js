@@ -479,6 +479,65 @@ async function runWatchFunctional(page) {
     }
   }
 
+  // --- Space must never leak to YouTube's own hotkey handlers ---
+  // The real logged-in "space pauses then resumes" bug: Flyt's keydown was on
+  // document capture, registered at mount — the parked ytd-app's hotkey
+  // manager registered EARLIER, ran first on a real keypress, toggled its
+  // player, and Flyt then toggled it straight back. (Synthetic events never
+  // caught this: YouTube ignores untrusted events.) Flyt now listens on
+  // WINDOW capture — always first — and suppresses the rest of the path.
+  // Simulate YouTube's handler with a document-capture spy and use
+  // page.keyboard (trusted input) like a real keypress.
+  await page.evaluate(() => {
+    window.__spaceSpy = { count: 0 };
+    document.addEventListener('keydown', (e) => { if (e.key === ' ') window.__spaceSpy.count++; }, true);
+  });
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  const spyPausedBefore = (await videoState(page)).paused;
+  await page.keyboard.press(' ');
+  await page.waitForTimeout(300);
+  const spyHits = await page.evaluate(() => window.__spaceSpy.count);
+  const spyPausedAfter = (await videoState(page)).paused;
+  if (spyHits > 0) {
+    report('space-not-leaked', `a document-capture keydown listener (standing in for YouTube's hotkey manager) saw the Space press ${spyHits}x — Flyt must consume it at window capture or YouTube double-toggles playback`);
+  }
+  if (spyPausedAfter === spyPausedBefore) {
+    report('space-toggles-playback', `trusted Space press did not flip paused (stayed ${spyPausedAfter}) — the window-capture handler is not toggling`);
+  }
+  // Space with focus on a button outside the bar must not leak either (the
+  // target gate returns early there, but still has to swallow propagation).
+  await page.evaluate(() => { const b = document.querySelector('.watch-like-btn'); if (b) b.focus(); });
+  await page.keyboard.press(' ');
+  await page.waitForTimeout(200);
+  const spyHitsGated = await page.evaluate(() => window.__spaceSpy.count);
+  if (spyHitsGated > 0) {
+    report('space-not-leaked-gated', `Space with a focused button leaked to a document-capture listener ${spyHitsGated}x — YouTube's hotkey manager would toggle the parked player`);
+  }
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+
+  // --- a user pause must be enforced against YouTube force-resuming ---
+  // Second half of the same bug: on logged-in sessions something in YouTube's
+  // player machinery restarts playback ~0.5s after an element pause. Flyt now
+  // re-pauses on any 'play' event it did not initiate while the user's pause
+  // intent stands. playVideo() here plays the role of YouTube's watchdog.
+  if ((await videoState(page)).paused) {
+    await page.evaluate(() => document.querySelector('#itube-stage video').play());
+    await page.waitForTimeout(300);
+  }
+  await page.keyboard.press(' ');   // user pauses
+  await page.waitForTimeout(250);
+  if ((await videoState(page)).paused) {
+    await page.evaluate(() => document.querySelector('#movie_player').playVideo());
+    await page.waitForTimeout(400);
+    const enforced = (await videoState(page)).paused;
+    if (!enforced) {
+      report('pause-enforced', 'after a Space pause, a playVideo() call (standing in for YouTube force-resuming) left the video playing — the play-event enforcement is not re-pausing');
+    }
+    // leave the video playing for the checks below, via the user path
+    await page.keyboard.press(' ');
+    await page.waitForTimeout(250);
+  }
+
   // --- an explicit pause must survive the boot/SPA resume window ---
   // Regression for the "press space, it works for half a second and jumps
   // back" bug: on navigation the app arms a ~6s resume window that force-plays

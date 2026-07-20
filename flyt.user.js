@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.16
+// @version      0.0.17
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -9858,7 +9858,22 @@
     // Called from the tick rebind branch for EVERY newly adopted element.
     const wireVideoEl = (video) => {
       if (!ui) return;
-      video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); showBar(); updateMediaSessionMetadata(); }, bound);
+      video.addEventListener('play', () => {
+        // Enforce the user's pause: every Flyt-initiated play clears
+        // userPausedPlayback FIRST (setPlaying / media keys / resume), so a
+        // play arriving while it's still set was started by YouTube's own
+        // machinery (hotkey manager, watchdog, whatever) overriding an
+        // explicit pause — undo it immediately. Ads are exempt: they must
+        // play out or killAd can't seek past them.
+        if (userPausedPlayback && !adActive) {
+          player()?.pauseVideo?.();
+          video.pause();
+          return;
+        }
+        ui.play.replaceChildren(ICONS.pause());
+        showBar();
+        updateMediaSessionMetadata();
+      }, bound);
       video.addEventListener('pause', () => { ui.play.replaceChildren(ICONS.play()); showBar(); updateMediaSessionMetadata(); }, bound);
       video.addEventListener('timeupdate', () => {
         if (adActive) { killAd(video); return; }
@@ -10107,8 +10122,18 @@
         e.stopImmediatePropagation();
         return;
       }
+      // Playback shortcuts are bare keys (shift is fine: '<' '>'), never
+      // chords — without this, ⌘K toggled playback underneath the palette.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || (target.tagName === 'BUTTON' && !target.closest('#itube-bar')))) return;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || (target.tagName === 'BUTTON' && !target.closest('#itube-bar')))) {
+        // Not ours to handle here — but a bare Space must still never reach
+        // YouTube's hotkey manager (it would toggle the parked player under
+        // us). stopPropagation only: the default action (button activation,
+        // typing the space) is unaffected.
+        if (e.key === ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) e.stopPropagation();
+        return;
+      }
       const video = wired;
       if (!video) return;
       showBar();
@@ -10221,13 +10246,21 @@
           break;
       }
     };
-    document.addEventListener('keydown', onKeydown, true);
+    // WINDOW capture, not document: the capture path visits window first, so
+    // this always runs before the parked ytd-app's own hotkey handlers no
+    // matter when/where they registered — and stopImmediatePropagation then
+    // genuinely suppresses them. On document, YouTube's earlier-registered
+    // capture handler ran FIRST: a real (trusted) Space press toggled the
+    // player twice — YouTube paused, Flyt saw "paused" and flipped it straight
+    // back to playing. (Synthetic test events never showed this: YouTube
+    // ignores untrusted events.)
+    window.addEventListener('keydown', onKeydown, true);
 
     const onVisibility = () => {
       if (boostCtx && document.visibilityState === 'visible' && boostCtx.state === 'suspended') boostCtx.resume().catch(() => {});
       if (audioOnly && document.visibilityState === 'hidden') {
         const v = stage.querySelector('video');
-        if (v && v.paused) v.play().catch(() => {});
+        if (v && v.paused && !userPausedPlayback) v.play().catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
@@ -10302,7 +10335,7 @@
       speedMenu.destroy();
       root.classList.remove('theater');
       watchLeft.classList.remove('itube-cursor-hide');
-      document.removeEventListener('keydown', onKeydown, true);
+      window.removeEventListener('keydown', onKeydown, true);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('yt-navigate-finish', onNavigateFinish);
       if ('mediaSession' in navigator) {
