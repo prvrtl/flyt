@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.14
+// @version      0.0.15
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -8754,8 +8754,8 @@
     const setMediaSessionAvActions = () => {
       if (!('mediaSession' in navigator)) return;
       try {
-        navigator.mediaSession.setActionHandler('play', () => { userPausedPlayback = false; wired?.play().catch(() => {}); });
-        navigator.mediaSession.setActionHandler('pause', () => { userPausedPlayback = true; wired?.pause(); });
+        navigator.mediaSession.setActionHandler('play', () => { userPausedPlayback = false; player()?.playVideo?.(); wired?.play().catch(() => {}); });
+        navigator.mediaSession.setActionHandler('pause', () => { userPausedPlayback = true; player()?.pauseVideo?.(); wired?.pause(); });
         navigator.mediaSession.setActionHandler('seekbackward', () => {
           if (wired) wired.currentTime = Math.max(0, wired.currentTime - 10);
         });
@@ -9086,6 +9086,25 @@
     let wired = null;
     let lastVideoId = null;
     let lastToggleAt = 0;
+    // Drive playback through YouTube's player API, not just the raw <video>.
+    // Pausing only the element leaves the player's own state machine at
+    // "playing", and its controller reconciles by re-playing the element a
+    // beat later — the "tap space, it stops for a moment then continues" bug.
+    // pauseVideo()/playVideo() move that state so the pause actually sticks.
+    const setPlaying = (shouldPlay) => {
+      const v = wired;
+      if (!v) return;
+      userPausedPlayback = !shouldPlay;
+      const p = player();
+      if (shouldPlay) {
+        if (p && typeof p.playVideo === 'function') p.playVideo();
+        const r = v.play();
+        if (r && typeof r.catch === 'function') r.catch(() => {});
+      } else {
+        if (p && typeof p.pauseVideo === 'function') p.pauseVideo();
+        v.pause();
+      }
+    };
     const togglePlayback = () => {
       const v = wired;
       if (!v) return;
@@ -9093,8 +9112,7 @@
       if (now - lastToggleAt < 300) return;
       lastToggleAt = now;
       const willPlay = v.paused;
-      userPausedPlayback = !willPlay;
-      if (willPlay) v.play(); else v.pause();
+      setPlaying(willPlay);
       showOSD(willPlay ? ICONS.play : ICONS.pause, willPlay ? 'Playing' : 'Paused');
     };
     let adActive = false;
@@ -9400,9 +9418,9 @@
         clickTimer = null;
         const v = document.querySelector('#itube-stage video');
         if (v) {
-          userPausedPlayback = !v.paused;
-          v.paused ? v.play() : v.pause();
-          showOSD(v.paused ? ICONS.pause : ICONS.play, v.paused ? 'Paused' : 'Playing');
+          const willPlay = v.paused;
+          setPlaying(willPlay);
+          showOSD(willPlay ? ICONS.play : ICONS.pause, willPlay ? 'Playing' : 'Paused');
         }
       }, 220);
     });

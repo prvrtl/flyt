@@ -498,6 +498,20 @@ async function runWatchFunctional(page) {
   });
   await page.waitForTimeout(300);
   const pausedByUser = (await videoState(page)).paused;
+  // The pause must also register with YouTube's own player state machine, not
+  // just the <video> element. When it only pauses the element, getPlayerState()
+  // stays 1 (PLAYING) and — logged in — YouTube's controller re-plays the
+  // element a beat later ("tap space, it stops for a moment then continues").
+  // Driving pauseVideo() moves the state to 2 (PAUSED) so the pause sticks.
+  if (pausedByUser) {
+    const ytState = await page.evaluate(() => {
+      const p = document.querySelector('#movie_player');
+      return p && p.getPlayerState ? p.getPlayerState() : null;
+    });
+    if (ytState === 1) {
+      report('pause-updates-player-state', 'after a Space pause the <video> was paused but #movie_player.getPlayerState() is still 1 (PLAYING) — YouTube\'s controller will reconcile by re-playing it; pause must go through pauseVideo()');
+    }
+  }
   // Re-arm the resume window: an in-app SPA re-nav to the same video (the app
   // arms the window on nav when the player already holds the video).
   const curId = await page.evaluate(() => new URLSearchParams(location.search).get('v'));
