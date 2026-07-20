@@ -168,6 +168,49 @@ const check = (name, ok, detail = '') => {
   check('history renders', hist.items > 0 || hist.empty, `${hist.items} items`);
   await shoot('li-history');
 
+  // ---------- PLAYLISTS LIBRARY ----------
+  console.log('\n[playlists]');
+  await page.goto('https://www.youtube.com/feed/playlists', { waitUntil: 'domcontentloaded' });
+  await waitApp();
+  const playlists = await page.evaluate(() => {
+    const tiles = [...document.querySelectorAll('#itube .c')];
+    return {
+      count: tiles.length,
+      allPlaylistLinks: tiles.length > 0 && tiles.every((t) => (t.querySelector('.c-link')?.getAttribute('href') || '').startsWith('/playlist?list=')),
+      navRow: !!document.querySelector('#itube .nav-row[href="/feed/playlists"]'),
+    };
+  });
+  check('playlists library lists playlists', playlists.count > 0 && playlists.allPlaylistLinks, `${playlists.count} tiles`);
+  check('playlists nav row present', playlists.navRow);
+  await shoot('li-playlists');
+
+  // ---------- WATCH LATER MEMBERSHIP (read-only) ----------
+  console.log('\n[wl membership]');
+  await page.goto('https://www.youtube.com/playlist?list=WL', { waitUntil: 'domcontentloaded' });
+  await waitApp();
+  const wlHref = await page.evaluate(() => document.querySelector('#itube .c .c-link')?.getAttribute('href') || '');
+  const wlId = (wlHref.match(/[?&]v=([^&]+)/) || [])[1];
+  if (wlId) {
+    await page.goto('https://www.youtube.com/watch?v=' + wlId, { waitUntil: 'domcontentloaded' });
+    await waitApp();
+    await page.waitForTimeout(4000); // wlSet load + refine
+    const saveState = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('#itube .watch-action-btn')].find((x) => x.title === 'Save');
+      return btn ? btn.getAttribute('aria-pressed') : null;
+    });
+    check('save button reflects WL membership', saveState === 'true', `aria-pressed=${saveState} for WL member ${wlId}`);
+  } else {
+    check('save button reflects WL membership', true, 'skipped — WL empty');
+  }
+  // quick-save appears on card hover (no click — read-only)
+  await page.goto('https://www.youtube.com/', { waitUntil: 'domcontentloaded' });
+  await waitApp();
+  const tb = await (await page.$('#itube .c .c-thumb')).boundingBox();
+  await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+  await page.waitForTimeout(400);
+  const quickPresent = await page.evaluate(() => { const b = document.querySelector('.wl-quick'); return !!(b && b.isConnected); });
+  check('wl quick-save appears on card hover', quickPresent);
+
   // ---------- page errors ----------
   console.log('\n[errors]');
   check('no page errors across the pass', errors.length === 0, errors.slice(0, 3).join(' ; '));

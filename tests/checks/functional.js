@@ -6421,8 +6421,38 @@ async function checkWatchSubscribeState(browser) {
   return violations;
 }
 
+// The Playlists library route must exist regardless of auth: logged out it
+// shows the sign-in prompt, never the unhandled placeholder. Catches the
+// /feed/playlists route regressing to mountUnhandled (it was previously a
+// generic feed that extracted nothing) and the nav row disappearing.
+async function checkPlaylistsPage(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/feed/playlists');
+  await waitForApp(page).catch(() => {});
+  await page.waitForTimeout(1000);
+  const state = await page.evaluate(() => ({
+    nav: !!document.querySelector('#itube .nav-row[href="/feed/playlists"]'),
+    signin: !!document.querySelector('#itube .signin-state'),
+    unhandled: !!document.querySelector('#itube .unhandled'),
+    tiles: document.querySelectorAll('#itube .c').length,
+  }));
+  if (!state.nav) {
+    violations.push({ check: 'playlists-nav-row', detail: 'expected a Playlists nav row (href="/feed/playlists") in the sidebar' });
+  }
+  if (state.unhandled) {
+    violations.push({ check: 'playlists-page-handled', detail: '/feed/playlists rendered the unhandled placeholder — the playlists route is not mounted' });
+  }
+  if (!state.signin && state.tiles === 0) {
+    violations.push({ check: 'playlists-signedout-prompt', detail: 'logged out, /feed/playlists showed neither a sign-in prompt nor playlist tiles' });
+  }
+  await context.close();
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
+  checkPlaylistsPage,
   checkThumbFlyAnimation,
   checkAbLoop,
   checkFrameExport,

@@ -88,6 +88,7 @@ const {
   checkMediaSession,
   checkAutoplayNext,
   checkFollowingPage,
+  checkPlaylistsPage,
   checkChannelSubscribeState,
   checkWatchSubscribeState,
 } = require('./checks/functional');
@@ -243,6 +244,7 @@ const FUNCTIONAL_ENTRIES = [
   // runWatchFunctional.
   { subname: 'autoplaynext', label: 'autoplay to next video', page: 'autoplaynext', check: 'functional', errCheck: 'autoplay-next', arg: 'browser', run: (browser) => checkAutoplayNext(browser) },
   { subname: 'following', label: 'Following page (sortable channels table, mocked guide/browse)', page: 'following', check: 'functional', errCheck: 'following-page', arg: 'browser', run: (browser) => checkFollowingPage(browser) },
+  { subname: 'playlists', label: 'Playlists library (nav row + signed-out prompt)', page: 'playlists', check: 'functional', errCheck: 'playlists-page', arg: 'browser', run: (browser) => checkPlaylistsPage(browser) },
   { subname: 'channel-subscribe-state', label: 'channel page subscribe state derived from guide cache', page: 'channel', check: 'functional', errCheck: 'channel-subscribe-state', arg: 'browser', run: (browser) => checkChannelSubscribeState(browser) },
   { subname: 'watch-subscribe-state', label: 'watch page subscribe state derived from guide cache', page: 'watch', check: 'functional', errCheck: 'watch-subscribe-state', arg: 'browser', run: (browser) => checkWatchSubscribeState(browser) },
 ];

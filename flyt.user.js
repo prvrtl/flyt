@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.18
+// @version      0.0.19
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -89,7 +89,6 @@
     '/feed/subscriptions': { browseId: 'FEsubscriptions', heading: 'Subscriptions' },
     '/feed/history': { browseId: 'FEhistory', heading: 'Watch history' },
     '/feed/library': { browseId: 'FElibrary', heading: 'Library' },
-    '/feed/playlists': { browseId: 'FEplaylists', heading: 'Playlists' },
     '/feed/trending': { browseId: 'FEtrending', heading: 'Trending' },
   };
 
@@ -115,6 +114,10 @@
     later: () => icon([
       ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M8 4.6V8l2.4 1.5' }],
+    ]),
+    playlists: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'round', d: 'M2.2 4h8.6M2.2 7.2h8.6M2.2 10.4h4.6' }],
+      ['path', { fill: 'currentColor', d: 'M9.6 8.6l4.6 2.7-4.6 2.7z' }],
     ]),
     history: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M2.6 6.2A5.8 5.8 0 1 1 2.2 8' }],
@@ -1091,6 +1094,30 @@
       font-variant-numeric: tabular-nums;
       color: #fff;
       padding: 2px 4px;
+    }
+    #itube .wl-quick {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: none;
+      border-radius: var(--r-sm);
+      background: rgba(6, 7, 12, .78);
+      color: #fff;
+      cursor: pointer;
+    }
+    #itube .wl-quick:hover {
+      background: rgba(6, 7, 12, .94);
+      color: var(--accent);
+    }
+    #itube .wl-quick.active {
+      color: var(--accent);
     }
     #itube .c-title {
       margin: 10px 0 0;
@@ -4207,8 +4234,13 @@
         const img = lk.contentImage?.thumbnailViewModel || lk.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel;
         const thumb = pickThumbUrl(img?.image?.sources, targetWidth);
         if (!title || !thumb) return;
+        // Collection thumbnails carry the size as a badge ("1,246 videos").
+        let count = '';
+        walk(lk.contentImage, (n) => {
+          if (typeof n.text === 'string' && /\d/.test(n.text)) { count = n.text; return WALK_STOP; }
+        });
         seen.add(id);
-        out.push({ id, type: 'playlist', title, channel: '', channelHref: null, thumb, duration: '', views: '', published: '', snippet: '' });
+        out.push({ id, type: 'playlist', title, channel: '', channelHref: null, thumb, duration: '', views: count, published: '', snippet: '' });
         return;
       }
       const legacy = node.playlistRenderer || node.gridPlaylistRenderer || node.compactPlaylistRenderer;
@@ -5191,6 +5223,7 @@
     { key: 'subs', label: 'Subscriptions', href: '/feed/subscriptions' },
     { key: 'following', label: 'Following', href: '/feed/channels' },
     { key: 'later', label: 'Watch later', href: '/playlist?list=WL' },
+    { key: 'playlists', label: 'Playlists', href: '/feed/playlists' },
     { key: 'history', label: 'History', href: '/feed/history' },
   ];
   const navRows = {};
@@ -5756,6 +5789,53 @@
     if (!channelId || !guideChannelsCache || guideChannelsFailed) return null;
     return guideChannelsCache.some((ch) => ch.browseId === channelId);
   };
+  // ---- Watch Later membership -------------------------------------------
+  // One VLWL fetch per session (kicked at idle, logged-in only) gives every
+  // Save control its true initial state — the alternative, an extra API call
+  // per watch navigation, is exactly the per-nav cost the perf mandate bans.
+  // Local toggles keep the set current without refetching.
+  let wlSet = null;
+  let wlLoading = null;
+  const WL_MAX_PAGES = 5; // 100 ids/page — beyond ~500 the set stays partial (unknown ids just read as "not saved")
+  const loadWlSet = () => {
+    if (wlSet || wlLoading || loggedOut() || !cfg()?.INNERTUBE_API_KEY) return wlLoading;
+    wlLoading = (async () => {
+      const ids = new Set();
+      const collect = (res) => walk(res, (n) => {
+        if (n?.playlistVideoRenderer?.videoId) ids.add(n.playlistVideoRenderer.videoId);
+      });
+      const first = await innertube('browse', { browseId: 'VLWL' });
+      if (!first) { wlLoading = null; return; }
+      collect(first);
+      let token = findContinuationToken(first);
+      for (let page = 1; token && page < WL_MAX_PAGES; page++) {
+        const more = await innertube('browse', { continuation: token });
+        if (!more) break;
+        collect(more);
+        token = findContinuationToken(more);
+      }
+      wlSet = ids;
+      wlLoading = null;
+    })();
+    return wlLoading;
+  };
+  // true/false when known, null when the set hasn't loaded (treat as unknown).
+  const wlHas = (videoId) => (wlSet && videoId ? wlSet.has(videoId) : null);
+  const wlMark = (videoId, inWl) => {
+    if (!wlSet || !videoId) return;
+    if (inWl) wlSet.add(videoId); else wlSet.delete(videoId);
+  };
+  const wlToggle = async (videoId) => {
+    const adding = wlHas(videoId) !== true;
+    const action = adding
+      ? { action: 'ACTION_ADD_VIDEO', addedVideoId: videoId }
+      : { action: 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID', removedVideoId: videoId };
+    const res = await innertube('browse/edit_playlist', { playlistId: 'WL', actions: [action] });
+    const ok = playlistEditConfirmed(res);
+    if (ok) wlMark(videoId, adding);
+    return { ok, inWl: ok ? adding : !adding };
+  };
+
   // Calls `cb` once the guide list has settled (loaded or given up), kicking
   // off the fetch if it hasn't started. Returns a canceller so callers can
   // stop waiting once they're no longer the current view.
@@ -5835,6 +5915,7 @@
     idle(startGuideChannelsFetch);
   };
   renderGuideChannels();
+  idle(loadWlSet);
 
   const cmdkOverlay = document.createElement('div');
   cmdkOverlay.className = 'cmdk-overlay';
@@ -5990,6 +6071,53 @@
   content.className = 'content';
   const view = document.createElement('div');
   content.appendChild(view);
+
+  // ---- Watch Later quick-save on cards -----------------------------------
+  // One shared button, delegated from the content root: created once and
+  // moved into whichever card thumb the pointer is over. Keeps the grid's
+  // DOM flat (no extra node per card, no per-card listeners).
+  const wlQuick = document.createElement('button');
+  wlQuick.type = 'button';
+  wlQuick.className = 'wl-quick';
+  wlQuick.appendChild(ICONS.later());
+  let wlQuickId = null;
+  let wlQuickBusy = false;
+  const wlQuickSync = () => {
+    const inWl = wlHas(wlQuickId) === true;
+    wlQuick.classList.toggle('active', inWl);
+    wlQuick.title = inWl ? 'Remove from Watch later' : 'Watch later';
+    wlQuick.setAttribute('aria-label', wlQuick.title);
+  };
+  const videoIdFromCard = (card) => {
+    const href = card.querySelector('.c-link, .row-link, .rc-link')?.getAttribute('href') || '';
+    const m = href.match(/[?&]v=([^&]+)/);
+    return m ? m[1] : null;
+  };
+  content.addEventListener('pointerover', (e) => {
+    if (loggedOut()) return;
+    const card = e.target.closest?.('.c, .row, .rc');
+    const current = wlQuick.parentElement ? wlQuick.parentElement.closest('.c, .row, .rc') : null;
+    if (card === current) return;
+    if (!card) { wlQuick.remove(); wlQuickId = null; return; }
+    const id = videoIdFromCard(card);
+    const thumb = card.querySelector('.c-thumb, .row-thumb, .rc-thumb');
+    if (!id || !thumb) { wlQuick.remove(); wlQuickId = null; return; }
+    wlQuickId = id;
+    wlQuickSync();
+    thumb.appendChild(wlQuick);
+    if (wlHas(id) === null) loadWlSet()?.then(() => { if (wlQuickId === id) wlQuickSync(); });
+  });
+  content.addEventListener('pointerleave', () => { wlQuick.remove(); wlQuickId = null; });
+  wlQuick.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (wlQuickBusy || !wlQuickId) return;
+    wlQuickBusy = true;
+    const id = wlQuickId;
+    const res = await wlToggle(id);
+    if (res.ok && wlQuickId === id) wlQuickSync();
+    wlQuickBusy = false;
+  });
 
   const body = document.createElement('div');
   body.className = 'body';
@@ -6359,6 +6487,7 @@
 
   const HOME_SIGNED_OUT = { title: 'Try searching to get started', message: 'Sign in to build a feed of videos you’ll love.' };
   const WATCH_LATER_SIGNED_OUT = { title: 'Enjoy your favorite videos', message: 'Sign in to access videos that you’ve saved to Watch later.' };
+  const PLAYLISTS_SIGNED_OUT = { title: 'Keep your collections handy', message: 'Sign in to see your playlists.' };
 
   const mountHome = (cacheEntry) => {
     const heading = document.createElement('h2');
@@ -7007,6 +7136,46 @@
     }
     activeListCache = { getState: () => ({ ...list.getState(), heading: headingEl.textContent }) };
 
+    return list.cleanup;
+  };
+
+  // The Playlists library (/feed/playlists): the user's own playlists as a
+  // grid of playlist tiles. Playlist PAGES already render through the generic
+  // feed mount (VL<listId>); this page is just the index of them.
+  const mountPlaylists = (cacheEntry) => {
+    const headingEl = document.createElement('h1');
+    headingEl.className = 'page-heading';
+    headingEl.textContent = 'Playlists';
+
+    const extract = (res, seen) => extractPlaylists(res, seen, thumbTarget(GRID_THUMB_W));
+
+    const list = createListView({
+      itemClass: 'c',
+      containerClass: 'grid',
+      renderItem: createCard,
+      fetchInitial: async (seen) => {
+        if (!spaNav) {
+          const pageData = window.ytInitialData;
+          const prompt = loggedOut() ? (feedSignInPrompt(pageData) || PLAYLISTS_SIGNED_OUT) : null;
+          if (prompt) return { items: [], token: null, signIn: prompt };
+          const initialItems = pageData ? extract(pageData, seen) : [];
+          if (initialItems.length) return { items: initialItems, token: findContinuationToken(pageData) };
+        }
+        const res = await innertube('browse', { browseId: 'FEplaylists' });
+        if (!res) return { items: [], token: null };
+        if (loggedOut()) {
+          return { items: [], token: null, signIn: feedSignInPrompt(res) || PLAYLISTS_SIGNED_OUT };
+        }
+        return { items: extract(res, seen), token: findContinuationToken(res) };
+      },
+      fetchMore: continuationFetcher('browse', extract),
+      emptyMessage: 'No playlists yet.',
+    });
+
+    view.replaceChildren(headingEl, list.container, list.spinner);
+    if (cacheEntry) whenReady(() => list.restoreFromCache(cacheEntry));
+    else whenReady(() => list.loadInitial());
+    activeListCache = { getState: () => ({ ...list.getState(), heading: headingEl.textContent }) };
     return list.cleanup;
   };
 
@@ -8300,6 +8469,8 @@
       if (!playlistEditConfirmed(res)) {
         saved = prevSaved;
         setSaveUI();
+      } else {
+        wlMark(actionsVideoId, saved);
       }
       saveBusy = false;
     });
@@ -8416,8 +8587,18 @@
         });
       }
 
-      saved = new URLSearchParams(location.search).get('list') === 'WL';
+      // True membership, not just "came from the WL page": known instantly
+      // when the session's WL set has loaded, refined async when it hasn't.
+      const savedVideoId = actionsVideoId;
+      saved = new URLSearchParams(location.search).get('list') === 'WL' || wlHas(savedVideoId) === true;
       setSaveUI();
+      if (wlHas(savedVideoId) === null) {
+        loadWlSet()?.then(() => {
+          if (actionsVideoId !== savedVideoId) return;
+          const m = wlHas(savedVideoId);
+          if (m !== null && m !== saved) { saved = m; setSaveUI(); }
+        });
+      }
 
       if (stopGuideWait) { stopGuideWait(); stopGuideWait = null; }
       const channelId = actionsChannelId;
@@ -10505,6 +10686,7 @@
     if (path === '/results') return { type: 'search' };
     if (CHANNEL_PATH_RE.test(path)) return { type: 'channel' };
     if (path === '/feed/channels') return { type: 'following' };
+    if (path === '/feed/playlists') return { type: 'playlists' };
     if (path === '/feed/explore') return { type: 'feed', browseId: ['FEexplore', 'FEtrending'], heading: 'Explore' };
     if (FEED_BROWSE[path]) return { type: 'feed', browseId: FEED_BROWSE[path].browseId, heading: FEED_BROWSE[path].heading, useInitialData: true };
     if (path === '/playlist') {
@@ -10580,6 +10762,7 @@
       ? new URLSearchParams(location.search).get('search_query')
       : type === 'feed' ? heading
         : type === 'following' ? 'Following'
+          : type === 'playlists' ? 'Playlists'
           : type === 'home' ? null
             : type === 'watch' ? null
               : null);
@@ -10594,6 +10777,7 @@
       : type === 'channel' ? mountChannel()
       : type === 'feed' ? mountFeed(browseId, heading, { useInitialData, cacheEntry })
       : type === 'following' ? mountFollowing()
+      : type === 'playlists' ? mountPlaylists(cacheEntry)
       : mountUnhandled();
     spaNav = false;
   };
