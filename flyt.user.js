@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.22
+// @version      0.0.23
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -28,13 +28,37 @@
   // and their playback toggles fight — which presents as bugs that "survive"
   // every fix because the old copy is still doing the old thing. The version
   // line also ends the guessing about which build a browser actually runs.
-  const FLYT_VERSION = (typeof GM_info !== 'undefined' && GM_info?.script?.version) || '0.0.22';
+  const FLYT_VERSION = (typeof GM_info !== 'undefined' && GM_info?.script?.version) || '0.0.23';
   if (window.__flytBooted) {
     console.warn('[flyt] v' + FLYT_VERSION + ': another copy (v' + window.__flytBooted + ') is already running on this page — this one is NOT starting. Remove duplicate userscripts.');
     return;
   }
   window.__flytBooted = FLYT_VERSION;
   console.info('[flyt] v' + FLYT_VERSION);
+
+  // Neutralize the player's telemetry at the source: answer these with a
+  // fake success instead of letting them reach the network. Quieter than a
+  // content blocker (the player sees "delivered" and never retries — with a
+  // blocker it fails loudly and keeps trying) and it holds for users without
+  // one. Deliberately NOT blocked: /api/stats/watchtime and playback — they
+  // record watch history and resume positions, which are user-facing
+  // features, not telemetry.
+  const TELEMETRY_URL_RE = /doubleclick\.net\/|googlesyndication\.com\/|googleadservices\.com\/|google-analytics\.com\/|\/api\/stats\/(qoe|atr|ads|delayplay)\b|\/ptracking\b|\/youtubei\/v1\/log_event|\/pagead\//;
+  const origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    try {
+      const url = typeof input === 'string' ? input : ((input && input.url) || '');
+      if (TELEMETRY_URL_RE.test(url)) return Promise.resolve(new Response(null, { status: 204 }));
+    } catch (e) {}
+    return origFetch.apply(this, arguments);
+  };
+  if (navigator.sendBeacon) {
+    const origBeacon = navigator.sendBeacon.bind(navigator);
+    navigator.sendBeacon = function (url, data) {
+      try { if (TELEMETRY_URL_RE.test(String(url))) return true; } catch (e) {}
+      return origBeacon(url, data);
+    };
+  }
 
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
