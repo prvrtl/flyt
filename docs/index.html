@@ -337,7 +337,7 @@
   <div class="hero-glow" aria-hidden="true"></div>
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <span class="badge"><span class="dot"></span><b>Flyt</b> · userscript · v0.0.1 · BETA</span>
+      <span class="badge"><span class="dot"></span><b>Flyt</b> · userscript<span id="flyt-version"></span> · BETA</span>
       <h1>YouTube, rebuilt.<br>Not reskinned.</h1>
       <p class="lede">
         Flyt throws out YouTube's page and renders its own — from YouTube's own data.
@@ -783,6 +783,30 @@
     }, { threshold: 0.4 });
     counters.forEach((el) => cio.observe(el));
   }
+
+  // Live version badge: read @version from the same raw script URL the
+  // userscript managers install from — always the real current version, no
+  // hardcoded number to go stale. Only the header bytes are read (Range
+  // request; if the CDN ignores it, the stream is cancelled after the first
+  // chunks). On any failure the badge just shows no version.
+  (async () => {
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/prvrtl/flyt/main/flyt.user.js', { headers: { Range: 'bytes=0-1000' } });
+      if (!res.ok || !res.body) return;
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let head = '';
+      while (head.length < 4000) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        head += dec.decode(value, { stream: true });
+        if (/@version\s+[\d.]+/.test(head)) break;
+      }
+      reader.cancel().catch(() => {});
+      const m = head.match(/@version\s+([\d.]+)/);
+      if (m) document.getElementById('flyt-version').textContent = ' · v' + m[1];
+    } catch (e) { /* badge stays version-less */ }
+  })();
 </script>
 
 </body>

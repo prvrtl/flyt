@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.21
+// @version      0.0.22
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -22,6 +22,19 @@
 
 (() => {
   'use strict';
+
+  // Exactly one copy may run. Two userscript copies installed side by side
+  // (an old build plus a current one) both boot, both bind keyboard handlers,
+  // and their playback toggles fight — which presents as bugs that "survive"
+  // every fix because the old copy is still doing the old thing. The version
+  // line also ends the guessing about which build a browser actually runs.
+  const FLYT_VERSION = (typeof GM_info !== 'undefined' && GM_info?.script?.version) || '0.0.22';
+  if (window.__flytBooted) {
+    console.warn('[flyt] v' + FLYT_VERSION + ': another copy (v' + window.__flytBooted + ') is already running on this page — this one is NOT starting. Remove duplicate userscripts.');
+    return;
+  }
+  window.__flytBooted = FLYT_VERSION;
+  console.info('[flyt] v' + FLYT_VERSION);
 
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
