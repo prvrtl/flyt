@@ -6,7 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium, webkit } = require('playwright');
 
 const SCRIPT_PATH = path.join(__dirname, '..', '..', 'flyt.user.js');
 
@@ -28,19 +28,26 @@ const CONSENT_COOKIES = [
   },
 ];
 
+// WebKit is the DEFAULT engine: the app's primary user runs Safari, and a
+// string of bugs reproduced only there while every Chromium run stayed green.
+// Set FLYT_BROWSER=chromium for the old engine (e.g. to bisect an engine
+// difference), HEADED=1 to watch either one.
 async function launchBrowser() {
-  // Headless by default so the run doesn't steal focus / throw windows on screen.
-  // Set HEADED=1 to watch it (debugging). New-headless Chromium decodes YouTube's
-  // media, so the video-playback checks still hold.
-  const browser = await chromium.launch({
-    headless: !process.env.HEADED,
-    args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
-  });
-  return browser;
+  if ((process.env.FLYT_BROWSER || 'webkit') === 'chromium') {
+    return chromium.launch({
+      headless: !process.env.HEADED,
+      args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
+    });
+  }
+  return webkit.launch({ headless: !process.env.HEADED });
 }
 
 async function newContext(browser, { viewport = { width: 1440, height: 900 }, prefs = null } = {}) {
-  const context = await browser.newContext({ viewport });
+  // serviceWorkers: 'block' — on WebKit, youtube.com's service worker mediates
+  // fetches and page.route() never sees them (mocked-endpoint checks silently
+  // hit the real network). Chromium's interception hid this; blocking SWs
+  // makes route mocks deterministic on both engines.
+  const context = await browser.newContext({ viewport, serviceWorkers: 'block' });
   await context.addCookies(CONSENT_COOKIES);
 
   // Seed localStorage prefs (if requested) before the userscript's own

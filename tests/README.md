@@ -38,8 +38,11 @@ npm run test:selftest       # proves the harness actually catches a real bug (se
 Screenshots land in `artifacts/` (gitignored) for human eyeballing — they are
 never diffed automatically.
 
-Runs headed Chromium (`--mute-audio --autoplay-policy=no-user-gesture-required`)
-so the watch page can autoplay without a user gesture.
+Runs **WebKit by default** — the primary user runs Safari, and several bugs
+only ever reproduced on Safari's engine while Chromium stayed green. Set
+`FLYT_BROWSER=chromium` to compare engines (Chromium gets `--mute-audio
+--autoplay-policy=no-user-gesture-required` so the watch page can autoplay
+without a user gesture). `HEADED=1` opens a visible window for either engine.
 
 ## Pages under test (all logged out)
 

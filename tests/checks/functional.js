@@ -517,25 +517,49 @@ async function runWatchFunctional(page) {
 
   // --- a user pause must be enforced against YouTube force-resuming ---
   // Second half of the same bug: on logged-in sessions something in YouTube's
-  // player machinery restarts playback ~0.5s after an element pause. Flyt now
+  // player machinery restarts playback ~0.5s after an element pause. Flyt
   // re-pauses on any 'play' event it did not initiate while the user's pause
-  // intent stands. playVideo() here plays the role of YouTube's watchdog.
-  if ((await videoState(page)).paused) {
-    await page.evaluate(() => document.querySelector('#itube-stage video').play());
-    await page.waitForTimeout(300);
-  }
-  await page.keyboard.press(' ');   // user pauses
-  await page.waitForTimeout(250);
-  if ((await videoState(page)).paused) {
-    await page.evaluate(() => document.querySelector('#movie_player').playVideo());
-    await page.waitForTimeout(400);
-    const enforced = (await videoState(page)).paused;
-    if (!enforced) {
-      report('pause-enforced', 'after a Space pause, a playVideo() call (standing in for YouTube force-resuming) left the video playing — the play-event enforcement is not re-pausing');
+  // intent stands (plus a tick backstop for freshly swapped elements —
+  // WebKit's player swaps <video> elements often enough to need it).
+  // playVideo() plays the role of YouTube's watchdog.
+  //
+  // Every step below waits on the STATE it needs instead of assuming what the
+  // previous step left behind — the old version pressed Space assuming
+  // "playing → pause", and whenever the incoming state was paused it toggled
+  // the wrong way, cleared the pause intent, and asserted against a video it
+  // had itself set to playing. (WebKit's slower .paused flip made that
+  // misread deterministic; Chromium had been silently skipping the assert.)
+  const spaceUntil = async (wantPaused) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await page.evaluate(() => document.activeElement && document.activeElement.blur());
+      await page.keyboard.press(' ');
+      const ok = await page.waitForFunction(
+        (want) => { const v = document.querySelector('#itube-stage video'); return v && v.paused === want; },
+        wantPaused,
+        { timeout: 5000 }
+      ).then(() => true).catch(() => false);
+      if (ok) return true;
     }
-    // leave the video playing for the checks below, via the user path
-    await page.keyboard.press(' ');
-    await page.waitForTimeout(250);
+    return false;
+  };
+  if (!(await videoState(page)).paused || await spaceUntil(false)) {
+    if (await spaceUntil(true)) {
+      const flagged = await page.evaluate(() => (window.__flytWatchState ? window.__flytWatchState().userPaused : null));
+      if (flagged === false) {
+        report('pause-intent-flag', 'a Space pause did not set the user-pause intent — the enforcement has nothing to enforce');
+      }
+      await page.evaluate(() => document.getElementById('movie_player').playVideo());
+      // Cover both enforcement layers: the play-event listener (instant) and
+      // the tick backstop (<=500ms) for swapped elements.
+      await page.waitForTimeout(800);
+      const enforced = (await videoState(page)).paused;
+      if (!enforced) {
+        const state = await page.evaluate(() => (window.__flytWatchState ? window.__flytWatchState() : null));
+        report('pause-enforced', `after a Space pause, a playVideo() call (standing in for YouTube force-resuming) left the video playing — the enforcement is not re-pausing (state: ${JSON.stringify(state)})`);
+      }
+      // leave the video playing for the checks below, via the user path
+      await spaceUntil(false);
+    }
   }
 
   // --- an explicit pause must survive the boot/SPA resume window ---
@@ -1490,7 +1514,18 @@ async function checkWatchResponsive(browser) {
       // the rail sits BESIDE the main column, so an X-only edge comparison is
       // meaningful there — this is what pins the reported bug (Subscribe
       // floating over the rail at ~1000px).
-      if (width >= 1240 && info.railVisible && info.subscribeRect && info.railRect) {
+      //
+      // Engines disagree about what a media query measures at the boundary:
+      // WebKit's MQ width EXCLUDES the classic scrollbar, so at viewport 1240
+      // the <=1239px single-column branch legitimately applies (1240 - 8px
+      // gutter = 1232). Detect the ACTUAL layout from the DOM instead of
+      // assuming it from the viewport, and separately require that two-column
+      // engages once safely past the scrollbar delta.
+      const twoCol = !!(info.railRect && info.metaRect && info.railRect.left > info.metaRect.left + 100);
+      if (width >= 1256 && info.railVisible && !twoCol) {
+        violations.push({ check: 'watch-responsive-two-col-engages', detail: `at width=${width} the rail is still stacked below the main column (rail left ${info.railRect ? info.railRect.left.toFixed(1) : '?'}) — two-column must be active well past the breakpoint even with a classic scrollbar` });
+      }
+      if (twoCol && info.railVisible && info.subscribeRect && info.railRect) {
         const intersects = info.subscribeRect.right > info.railRect.left && info.subscribeRect.left < info.railRect.right
           && info.subscribeRect.bottom > info.railRect.top && info.subscribeRect.top < info.railRect.bottom;
         if (intersects) {
@@ -4779,7 +4814,12 @@ async function checkMiniExpandSeamless(browser) {
           regressedTimeSamples++;
         }
         const isLast = i === samples.length - 1;
-        if (!isLast && prev.rect && s.rect) {
+        // A big positional step is only a TELEPORT if it happened within a
+        // normal frame. The fly is time-based, so across a dropped/late frame
+        // (headless WebKit under decode load regularly exceeds 32ms) a large
+        // step is the CORRECT position for the elapsed time, not a snap.
+        const frameGap = s.t - prev.t;
+        if (!isLast && prev.rect && s.rect && frameGap < 32) {
           const dx = Math.abs(s.rect.left - prev.rect.left);
           const dy = Math.abs(s.rect.top - prev.rect.top);
           if (dx > teleportThreshold || dy > teleportThreshold) teleportSamples++;
@@ -5041,10 +5081,16 @@ async function checkMediaSession(browser) {
       return { violations, skipped: true, detail };
     }
 
-    // The video is muted+autoplaying already (see runWatchFunctional); give
-    // updateMediaSessionMetadata() — called from renderMeta() — a moment to
-    // have run rather than racing the very first render.
-    await page.waitForFunction(() => !!navigator.mediaSession.metadata, { timeout: 10000 }).catch(() => {});
+    // Wait until FLYT's metadata is in place: metadata.title must match the
+    // rendered watch title. Waiting for just "any metadata" raced YouTube's
+    // parked app — on WebKit it sets its own mediaSession metadata before
+    // Flyt's renderMeta reveals, and the check compared YouTube's metadata
+    // against Flyt's still-empty DOM.
+    await page.waitForFunction(() => {
+      const md = navigator.mediaSession.metadata;
+      const rendered = document.querySelector('.watch-title')?.textContent?.trim();
+      return !!md && !!rendered && md.title === rendered;
+    }, { timeout: 15000 }).catch(() => {});
 
     const state = await page.evaluate(() => {
       const md = navigator.mediaSession.metadata;
@@ -6324,8 +6370,8 @@ async function checkChannelSubscribeState(browser) {
     const inGuide = await readSubBtn();
     if (!inGuide) {
       violations.push({ check: 'channel-subscribe-button-exists', detail: 'expected a .ch-header .watch-subscribe button on the channel page' });
-    } else if (!inGuide.subscribedClass || inGuide.text !== 'Subscribed') {
-      violations.push({ check: 'channel-subscribe-state-in-guide', detail: `expected a channel present in the guide (subscriptions) cache to render "Subscribed", got subscribedClass=${inGuide.subscribedClass} text="${inGuide.text}" — readSubscribedState() alone misses YouTube's modern subscribe-button shape and must fall back to the guide cache` });
+    } else if (!inGuide.subscribedClass || inGuide.text !== 'Following') {
+      violations.push({ check: 'channel-subscribe-state-in-guide', detail: `expected a channel present in the guide (subscriptions) cache to render "Following", got subscribedClass=${inGuide.subscribedClass} text="${inGuide.text}" — readSubscribedState() alone misses YouTube's modern subscribe-button shape and must fall back to the guide cache` });
     }
 
     await navTo(CHANNEL_SUB_STATE_NOT_GUIDE_ID);
@@ -6417,8 +6463,8 @@ async function checkWatchSubscribeState(browser) {
       });
       if (!state) {
         violations.push({ check: 'watch-subscribe-button-exists', detail: 'expected a usable .watch-subscribe on the watch page' });
-      } else if (!state.subscribedClass || state.text !== 'Subscribed') {
-        violations.push({ check: 'watch-subscribe-state', detail: `expected the watch page's subscribe button to read "Subscribed" when its owner channel is present in the guide (subscriptions) cache, got subscribedClass=${state.subscribedClass} text="${state.text}" — readSubscribedState() alone misses YouTube's modern subscribe-button shape and must fall back to the guide cache` });
+      } else if (!state.subscribedClass || state.text !== 'Following') {
+        violations.push({ check: 'watch-subscribe-state', detail: `expected the watch page's subscribe button to read "Following" when its owner channel is present in the guide (subscriptions) cache, got subscribedClass=${state.subscribedClass} text="${state.text}" — readSubscribedState() alone misses YouTube's modern subscribe-button shape and must fall back to the guide cache` });
       }
     } finally {
       await page.close();

@@ -28,12 +28,19 @@ something.
   `window.CSS`.
 - **Volume** = element volume × player volume (loudness normalization); debounce
   the sync ≥300ms or the sliders drift.
-- No animations or transitions except the deliberate thumbnail fade.
+- No animations or transitions except the deliberate thumbnail fade and the
+  two fly-to-stage moves (thumbnail → stage, mini-player → stage).
+- **Never use `element.animate()`.** On Safari, YouTube loads its
+  web-animations polyfill, which hijacks `animate()` in the page context and
+  completes instantly — both flies teleported there for months. CSS
+  transitions only.
 
 ## Tests
 
 Playwright, against live youtube.com, logged out, script injected at
-document-start the way a userscript manager would.
+document-start the way a userscript manager would. **WebKit by default** —
+the primary user runs Safari, and several bugs only reproduce there
+(`FLYT_BROWSER=chromium` to compare engines).
 
 ```
 cd tests && npm install   # once

@@ -128,7 +128,7 @@ const check = (name, ok, detail = '') => {
     };
   });
   check('watch page renders with meta', watch.title.length > 5 && watch.related > 3, `"${watch.title}" +${watch.related} related`);
-  check('subscribe button reflects a real state', watch.subText === 'Subscribed' || watch.subText === 'Subscribe', `"${watch.subText}" (subscribed=${watch.subState})`);
+  check('subscribe button reflects a real state', watch.subText === 'Following' || watch.subText === 'Follow', `"${watch.subText}" (subscribed=${watch.subState})`);
   check('like button enabled logged-in, no sign-in hint', watch.likeDisabled === false && !watch.signInHint, `count="${watch.likeCount}"`);
 
   // comments logged-in

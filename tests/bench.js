@@ -165,10 +165,14 @@ async function main() {
     process.exit(2);
   }
 
-  const browser = await chromium.launch({
-    headless: !process.env.HEADED,
-    args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
-  });
+  // WebKit by default — the primary user runs Safari, so the perf mandate is
+  // judged on Safari's engine. FLYT_BROWSER=chromium for the old comparison.
+  const browser = (process.env.FLYT_BROWSER || 'webkit') === 'chromium'
+    ? await chromium.launch({
+      headless: !process.env.HEADED,
+      args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
+    })
+    : await require('playwright').webkit.launch({ headless: !process.env.HEADED });
 
   const runs = { stock: [], itube: [] };
   for (let i = 0; i < args.runs; i++) {

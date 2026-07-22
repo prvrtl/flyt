@@ -9,7 +9,7 @@
     ".sidebar-head": {
       "x": 12,
       "y": 16,
-      "w": 212,
+      "w": 208,
       "h": 148
     },
     ".content": {
@@ -21,7 +21,7 @@
     ".row:first-child": {
       "x": 248,
       "y": 128,
-      "w": 1176
+      "w": 1168
     },
     ".row:first-child .row-thumb": {
       "x": 256,

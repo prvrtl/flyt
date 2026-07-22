@@ -181,7 +181,9 @@ async function checkGeometry(browser) {
         watchRight: rect('#itube .watch-right'),
         firstRc: rect('#itube .rc'),
         rcCards: [...document.querySelectorAll('#itube .rc')].slice(0, 8).map((el) => { const r = el.getBoundingClientRect(); return { l: r.left, w: r.width }; }),
-        actionBtns: [...document.querySelectorAll('#itube .watch-actions > *')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => {
+        // .watch-stats is the strip's quiet meta text, not a control — it
+        // shares the row but not the 34px control height.
+        actionBtns: [...document.querySelectorAll('#itube .watch-actions > *')].filter((el) => el.getBoundingClientRect().width > 0 && !el.classList.contains('watch-stats')).map((el) => {
           const r = el.getBoundingClientRect();
           return { name: el.className.split(' ')[0] || el.tagName, t: r.top, h: r.height };
         }),

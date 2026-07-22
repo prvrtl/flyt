@@ -2,7 +2,7 @@
 // @name         Flyt
 // @name:en      Flyt
 // @namespace    https://github.com/prvrtl/flyt
-// @version      0.0.23
+// @version      0.0.24
 // @description  Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @description:en Flyt — a fast, lightweight YouTube. Renders its own lean UI from YouTube's data: many times faster, calmer, no ads, no clutter.
 // @author       prvrtl
@@ -28,7 +28,7 @@
   // and their playback toggles fight — which presents as bugs that "survive"
   // every fix because the old copy is still doing the old thing. The version
   // line also ends the guessing about which build a browser actually runs.
-  const FLYT_VERSION = (typeof GM_info !== 'undefined' && GM_info?.script?.version) || '0.0.23';
+  const FLYT_VERSION = (typeof GM_info !== 'undefined' && GM_info?.script?.version) || '0.0.24';
   if (window.__flytBooted) {
     console.warn('[flyt] v' + FLYT_VERSION + ': another copy (v' + window.__flytBooted + ') is already running on this page — this one is NOT starting. Remove duplicate userscripts.');
     return;
@@ -475,8 +475,6 @@
       box-shadow: 0 0 0 1px var(--accent), 0 0 13px -6px var(--accent);
       filter: brightness(1.06);
     }
-    #itube .watch-action-btn:hover:not(:disabled),
-    #itube .watch-likes:hover,
     #itube .watch-tool:hover:not(:disabled),
     #itube .settings-select:hover,
     #itube .comments-sort-btn:hover,
@@ -522,6 +520,34 @@
     #itube .following-table-wrap {
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, .18) transparent;
+    }
+    /* WebKit pair for the same scrollables: Safari with classic (always-on)
+       scrollbars would otherwise draw the system chrome — and a fixed 8px
+       gutter keeps geometry deterministic across engines. */
+    #itube .sidebar::-webkit-scrollbar,
+    #itube .content::-webkit-scrollbar,
+    #itube .watch-right::-webkit-scrollbar,
+    #itube .queue-list::-webkit-scrollbar,
+    #itube .tool-menu::-webkit-scrollbar,
+    #itube .itube-popup-panel::-webkit-scrollbar,
+    #itube .settings-panel::-webkit-scrollbar,
+    #itube .cmdk-list::-webkit-scrollbar,
+    #itube .following-table-wrap::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+      background: transparent;
+    }
+    #itube .sidebar::-webkit-scrollbar-thumb,
+    #itube .content::-webkit-scrollbar-thumb,
+    #itube .watch-right::-webkit-scrollbar-thumb,
+    #itube .queue-list::-webkit-scrollbar-thumb,
+    #itube .tool-menu::-webkit-scrollbar-thumb,
+    #itube .itube-popup-panel::-webkit-scrollbar-thumb,
+    #itube .settings-panel::-webkit-scrollbar-thumb,
+    #itube .cmdk-list::-webkit-scrollbar-thumb,
+    #itube .following-table-wrap::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, .18);
+      border-radius: 4px;
     }
     #itube ::selection {
       background: rgba(var(--accent-rgb), .3);
@@ -1242,13 +1268,6 @@
       max-width: 100%;
       box-sizing: border-box;
     }
-    #itube .watch-right::-webkit-scrollbar {
-      width: 6px;
-    }
-    #itube .watch-right::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, .15);
-      border-radius: 3px;
-    }
     #itube .queue-wrap,
     #itube .related-wrap {
       display: flex;
@@ -1525,8 +1544,8 @@
       gap: 12px;
     }
     #itube .watch-avatar {
-      width: 40px;
-      height: 40px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
       object-fit: cover;
       background: var(--raised);
@@ -1543,6 +1562,11 @@
          item, so a long unbroken channel name shoved the subscribe button. */
       flex: 0 1 auto;
       min-width: 0;
+      /* Identity reads as ONE line — name, then follower count as quiet
+         trailing meta — not YouTube's stacked two-liner. */
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
     }
     #itube .watch-channel-name {
       font-size: 14px;
@@ -1566,9 +1590,10 @@
       box-shadow: 0 0 0 2px var(--accent);
     }
     #itube .watch-subs {
-      font-size: 12.5px;
+      font-size: 12px;
       color: var(--dim);
-      margin-top: 2px;
+      white-space: nowrap;
+      flex: none;
     }
     #itube .watch-channel-spacer {
       flex: 1;
@@ -1581,16 +1606,19 @@
       margin-top: 12px;
       gap: 8px;
     }
+    /* Ghost buttons: no chrome at rest — the strip reads as a toolbar, not a
+       row of pills (the pill row is YouTube's fingerprint). Hover paints the
+       quiet surface; the accent Follow button stays the row's one loud thing. */
     #itube .watch-action-btn {
       display: flex;
       align-items: center;
       min-width: 0;
       gap: 6px;
       height: 34px;
-      padding: 0 14px;
-      background: var(--surface);
+      padding: 0 10px;
+      background: none;
       border: 1px solid transparent;
-      border-radius: var(--r-pill);
+      border-radius: var(--r-sm);
       color: var(--text);
       font: 500 13px -apple-system, system-ui, sans-serif;
       cursor: pointer;
@@ -1607,7 +1635,7 @@
       cursor: default;
     }
     #itube .watch-action-btn:disabled:hover {
-      background: var(--surface);
+      background: none;
     }
     #itube .watch-action-btn.active {
       background: rgba(var(--accent-rgb), .16);
@@ -1726,17 +1754,18 @@
       visibility: visible;
     }
     #itube .watch-likes {
+      /* Two independent reactions, not YouTube's split pill. */
       display: flex;
       align-items: center;
       min-width: 0;
       height: 34px;
-      /* border-box like the sibling .watch-action-btn buttons — as a div it
-         defaulted to content-box and rendered 36px in a row of 34px pills. */
       box-sizing: border-box;
-      background: var(--surface);
-      border: 1px solid transparent;
-      border-radius: var(--r-pill);
-      overflow: hidden;
+      gap: 2px;
+      background: none;
+      border: none;
+    }
+    #itube .watch-like-divider {
+      display: none;
     }
     #itube .watch-like-btn,
     #itube .watch-dislike-btn {
@@ -1744,11 +1773,13 @@
       align-items: center;
       gap: 6px;
       height: 100%;
-      padding: 0 14px;
+      padding: 0 10px;
       background: none;
       border: none;
+      border-radius: var(--r-sm);
       color: var(--text);
       font: 500 13px -apple-system, system-ui, sans-serif;
+      font-variant-numeric: tabular-nums;
       cursor: pointer;
     }
     #itube .watch-like-btn:hover,
@@ -1897,12 +1928,15 @@
       }
     }
     #itube .watch-stats {
+      /* The quiet meta corner of the actions strip (same rule the Up-next
+         posters follow: content left, meta right) — not a stats LINE. */
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
       gap: 6px 10px;
-      font-size: 13px;
-      color: var(--muted);
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--dim);
+      white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
     #itube .watch-stats-text {
@@ -2368,6 +2402,98 @@
       gap: 8px;
       padding-top: 4px;
     }
+    /* ---- Up next: poster cards ------------------------------------------
+       The related rail deliberately does NOT look like YouTube's thumb-left/
+       text-right rows: each card IS its thumbnail, full-bleed, with the
+       title on a bottom scrim and one quiet meta line — a streaming-service
+       poster, not a search result. Scoped to .related-wrap: the queue panel
+       keeps the compact rows (it's a position tracker; density wins there).
+       Same DOM as the compact card — this is styling only. */
+    #itube .related-wrap .rc {
+      display: block;
+      padding: 0;
+      border-radius: var(--r-md);
+      overflow: hidden;
+      background: var(--raised);
+    }
+    #itube .related-wrap .rc:hover {
+      background: var(--raised);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 13px -6px var(--accent);
+    }
+    #itube .related-wrap .rc-thumb {
+      flex: none;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      border-radius: 0;
+    }
+    #itube .related-wrap .rc-body {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 2;
+      padding: 24px 12px 10px;
+      background: linear-gradient(to top, rgba(6, 7, 12, .95), rgba(6, 7, 12, .62) 55%, transparent);
+      /* Text panel must not eat the card's click — only the channel link is
+         interactive inside it. */
+      pointer-events: none;
+    }
+    #itube .related-wrap .rc-title {
+      font-size: 14px;
+      color: #fff;
+    }
+    #itube .related-wrap .rc-chan {
+      pointer-events: auto;
+      color: rgba(255, 255, 255, .75);
+    }
+    #itube .related-wrap a.rc-chan:hover {
+      color: #fff;
+    }
+    #itube .related-wrap .rc-meta {
+      color: rgba(255, 255, 255, .55);
+      padding-right: 48px;
+    }
+    /* Duration: quiet text on the scrim's bottom-right, on the meta line —
+       no badge chrome. */
+    #itube .related-wrap .rc-dur {
+      top: auto;
+      left: auto;
+      right: 12px;
+      bottom: 10px;
+      background: none;
+      padding: 0;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, .55);
+    }
+    /* The first card is what autoplay will actually play — say so. */
+    #itube.autoplay-on .related-wrap .rc:first-child .rc-thumb::after {
+      content: 'NEXT';
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      padding: 3px 7px;
+      border-radius: var(--r-xs);
+      font: 700 10px -apple-system, system-ui, sans-serif;
+      letter-spacing: .08em;
+      background: var(--accent-solid);
+      color: var(--on-accent);
+    }
+    #itube .related-wrap .rc-skel {
+      display: block;
+      padding: 0;
+    }
+    #itube .related-wrap .rc-skel-thumb {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      border-radius: var(--r-md);
+    }
+    #itube .related-wrap .rc-skel-body {
+      display: none;
+    }
+
     #itube .rc-skel-body .sk-line.short {
       height: 10px;
     }
@@ -2889,14 +3015,6 @@
       height: 720px !important;
       opacity: 0 !important;
       pointer-events: none !important;
-    }
-    @media (max-width: 1511px) {
-      #itube .watch-action-btn span {
-        display: none;
-      }
-      #itube .watch-action-btn {
-        padding: 0 10px;
-      }
     }
     @media (max-width: 1239px) {
       #itube .watch {
@@ -6902,7 +7020,7 @@
         chSubscribeBtn.appendChild(chSubscribeLabel);
         chSubscribeBtn.classList.toggle('subscribed', chSubscribed);
         chSubscribeBtn.setAttribute('aria-pressed', String(chSubscribed));
-        chSubscribeLabel.textContent = chSubscribed ? 'Subscribed' : 'Subscribe';
+        chSubscribeLabel.textContent = chSubscribed ? 'Following' : 'Follow';
       };
       chSubscribeBtn.disabled = !browseId;
       setChSubscribeUI();
@@ -8463,7 +8581,7 @@
       subscribeBtn.appendChild(subscribeLabel);
       subscribeBtn.classList.toggle('subscribed', subscribed);
       subscribeBtn.setAttribute('aria-pressed', String(subscribed));
-      subscribeLabel.textContent = subscribed ? 'Subscribed' : 'Subscribe';
+      subscribeLabel.textContent = subscribed ? 'Following' : 'Follow';
     };
 
     likeBtn.addEventListener('click', async () => {
@@ -8538,7 +8656,7 @@
 
     subscribeBtn.addEventListener('click', async () => {
       if (subscribeBtn.disabled || subscribeBusy || !actionsChannelId) return;
-      if (loggedOut()) { requireSignIn('Sign in to subscribe to this channel.'); return; }
+      if (loggedOut()) { requireSignIn('Sign in to follow this channel.'); return; }
       subscribeBusy = true;
       const channelId = actionsChannelId;
       const prevSubscribed = subscribed;
@@ -8583,6 +8701,7 @@
     tAuto.b.addEventListener('click', () => {
       autoplayEnabled = !autoplayEnabled;
       lsSet('itube-autoplay', autoplayEnabled ? '1' : '0');
+      root.classList.toggle('autoplay-on', autoplayEnabled);
       syncTools();
       showOSD(ICONS.tools, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
     });
@@ -8670,6 +8789,10 @@
 
     const stats = document.createElement('div');
     stats.className = 'watch-stats';
+    // Stats ride at the right end of the actions strip — the same quiet
+    // meta-right rule the Up-next posters use — instead of YouTube's own
+    // dedicated stats line under the title.
+    actions.appendChild(stats);
     const desc = document.createElement('div');
     desc.className = 'watch-description';
     const unavailable = document.createElement('div');
@@ -8706,7 +8829,7 @@
     skelDesc.append(skelDescLine1, skelDescLine2, skelDescLine3);
     skeleton.append(skelChannel, skelStats, skelDesc);
 
-    const META_CONTENT_ELS = [stats, channelRow, actions];
+    const META_CONTENT_ELS = [channelRow, actions];
     let metaSkeletonVisible = false;
 
     const RELATED_SKELETON_COUNT = 6;
@@ -8750,7 +8873,7 @@
     const watchHead = document.createElement('div');
     watchHead.className = 'watch-head';
     watchHead.append(channelRow, actions, toolsRow);
-    meta.append(unavailable, skeleton, stats, watchHead, signInHint);
+    meta.append(unavailable, skeleton, watchHead, signInHint);
     showMetaSkeleton();
 
     const descPopup = makePopup('desc-popup');
@@ -8955,7 +9078,12 @@
 
     const renderStatsLine = (viewsText, dateText, tags) => {
       stats.replaceChildren();
-      const text = [viewsText, dateText].filter(Boolean).join(' · ');
+      // "2,045,451 views" is YouTube's register; the quiet meta corner wants
+      // "2M views". Full precision stays a hover away (title attribute).
+      const n = parseCount(viewsText);
+      const compactViews = Number.isFinite(n) && n > 0 ? formatCompact(n) + ' views' : viewsText;
+      if (viewsText && compactViews !== viewsText) stats.title = viewsText;
+      const text = [compactViews, dateText].filter(Boolean).join(' · ');
       if (text) {
         const t = document.createElement('span');
         t.className = 'watch-stats-text';
@@ -9067,10 +9195,13 @@
       if (!ownerName && data === window.ytInitialData) { showMetaSkeleton(); return; }
       revealMetaContent();
       channelName.textContent = ownerName;
-      subs.textContent = owner?.subscriberCountText?.simpleText
+      // Flyt's vocabulary is Follow/Following (see the nav) — mirror it in
+      // the count. Only the English word is rewritten; localized payloads
+      // keep their native phrasing.
+      subs.textContent = (owner?.subscriberCountText?.simpleText
         || owner?.subscriberCountText?.accessibility?.accessibilityData?.label
         || findNode(owner, (n) => typeof n?.content === 'string' && /subscriber/i.test(n.content))?.content
-        || '';
+        || '').replace(/\bsubscribers?\b/i, 'followers');
       const ownerId = resolveOwnerChannelId(data, details);
       const ownerHref = channelHrefFrom(owner?.navigationEndpoint)
         || channelHrefFrom(owner?.title?.runs?.[0]?.navigationEndpoint)
@@ -9550,6 +9681,7 @@
     let adFrameSeen = false;
     let adFrameFlushed = false;
     let adLastTime = -1;
+    let adEndNudgedAt = 0;
     let adRestoring = false;
     let adRestoreUntil = 0;
     let adObserver = null;
@@ -9557,6 +9689,9 @@
     const mountAbort = new AbortController();
     const bound = { signal: mountAbort.signal };
     let autoplayEnabled = lsGet('itube-autoplay') !== '0';
+    // Drives the NEXT tag on the first Up-next poster — it only tells the
+    // truth while autoplay will actually play that card.
+    root.classList.toggle('autoplay-on', autoplayEnabled);
     let sbEnabled = sponsorSkipOn();
     let sbSegments = [];
     let sbVideoId = null;
@@ -9961,11 +10096,24 @@
           adFrameSeen = false;
           adFrameFlushed = false;
           adLastTime = -1;
+          adEndNudgedAt = 0;
           stage.classList.add('ad');
         }
         p.mute?.();
         if (video && !video.muted) video.muted = true;
         killAd(video);
+        // WebKit ad wedge: killAd's seek lands at the ad's duration, but a
+        // stream that never buffered (readyState < 2) never fires 'ended'
+        // there — so YouTube's ad state machine waits forever and Safari
+        // shows a stuck black ad. Nudge it with the event it is waiting for.
+        // (Chromium fires the real 'ended' on the same seek, so this never
+        // triggers there.)
+        if (video && isFinite(video.duration) && video.duration > 0
+          && video.currentTime >= video.duration - 0.05 && video.readyState < 2
+          && Date.now() - adStartedAt > 1500 && Date.now() - adEndNudgedAt > 1500) {
+          adEndNudgedAt = Date.now();
+          video.dispatchEvent(new Event('ended'));
+        }
         if (video) {
           if (video.readyState >= 2) adFrameSeen = true;
           else if (adFrameSeen) adFrameFlushed = true;
@@ -10156,6 +10304,20 @@
     };
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
 
+    // Read-only diagnostics for the playback state machine — this is how
+    // "pause didn't stick" reports get debugged without guessing (the state
+    // that matters lives in closures a console can't reach).
+    window.__flytWatchState = () => ({
+      userPaused: userPausedPlayback,
+      wired: !!wired,
+      wiredIsStage: !!wired && wired === stage.querySelector('video'),
+      adActive,
+      desiredRate,
+      storedSpeed: lsGet('itube-speed'),
+      actionsChannelId,
+      miniHandoffPending,
+    });
+
     const tick = () => {
       const video = stage.querySelector('video') || document.querySelector('#itube-mini video') || document.querySelector('#movie_player video');
       const p = player();
@@ -10180,6 +10342,15 @@
       }
       syncAdState(video);
       resumePlayback();
+      // Backstop for the pause enforcement: the 'play'-event enforcement
+      // lives on a specific <video> element, so a force-play landing on a
+      // freshly swapped element slips through until the rebind. WebKit's
+      // player swaps elements often enough to hit that window; this closes
+      // it within one tick regardless of which element is playing.
+      if (userPausedPlayback && video && !video.paused && !adActive && !miniHandoffPending) {
+        p.pauseVideo?.();
+        video.pause();
+      }
       if (toolsOpen) syncTools();
       if (video) sbSkipCheck(video);
       if (video && !adActive && video.playbackRate !== desiredRate) video.playbackRate = desiredRate;
@@ -10311,24 +10482,39 @@
       if (prefersReducedMotion()) {
         finishMiniHandoff();
       } else {
-        requestAnimationFrame(() => {
+        // The stage can still be laying out on the first frame after mount —
+        // WebKit regularly reports a zero rect there, which used to bail to
+        // an instant (teleporting) handoff. Give layout a few frames before
+        // giving up on the fly.
+        let flyTries = 0;
+        const tryFly = () => {
           if (!miniFlying) return;
           const stageEl = document.getElementById('itube-stage');
           const target = stageEl ? stageEl.getBoundingClientRect() : null;
-          if (!target || target.width < 8 || target.height < 8) { finishMiniHandoff(); return; }
+          if (!target || target.width < 8 || target.height < 8) {
+            if (++flyTries < 15) { requestAnimationFrame(tryFly); return; }
+            finishMiniHandoff();
+            return;
+          }
           const dx = target.left - startRect.left;
           const dy = target.top - startRect.top;
           const sx = target.width / startRect.width;
           const sy = target.height / startRect.height;
+          // CSS transition, NOT mini.animate(): YouTube's web-animations
+          // polyfill (loaded on Safari) hijacks animate() and completes
+          // instantly — the mini teleported into the stage instead of flying.
           mini.style.transformOrigin = 'top left';
-          miniFlyAnim = mini.animate([
-            { transform: 'translate(0px, 0px) scale(1, 1)' },
-            { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
-          ], { duration: 400, easing: 'cubic-bezier(.22, .61, .36, 1)', fill: 'forwards' });
-          miniFlySafety = setTimeout(finishMiniHandoff, 500);
-          miniFlyAnim.onfinish = finishMiniHandoff;
-          miniFlyAnim.oncancel = finishMiniHandoff;
-        });
+          mini.style.transition = 'transform 400ms cubic-bezier(.22, .61, .36, 1)';
+          mini.getBoundingClientRect(); // commit start state before transitioning
+          mini.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+          mini.addEventListener('transitionend', function onFlyEnd(e) {
+            if (e.propertyName !== 'transform') return;
+            mini.removeEventListener('transitionend', onFlyEnd);
+            finishMiniHandoff();
+          });
+          miniFlySafety = setTimeout(finishMiniHandoff, 520);
+        };
+        requestAnimationFrame(tryFly);
       }
     }
 
@@ -10868,16 +11054,22 @@
       const dy = last.top - rect.top;
       const sx = last.width / rect.width;
       const sy = last.height / rect.height;
-      const fly = clone.animate([
-        { transform: 'translate(0px, 0px) scale(1, 1)' },
-        { transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + sx + ', ' + sy + ')' },
-      ], { duration: 380, easing: 'cubic-bezier(.22, .61, .36, 1)', fill: 'forwards' });
-      fly.onfinish = () => {
-        const out = clone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease-out', fill: 'forwards' });
-        out.onfinish = () => { clearTimeout(safety); cleanup(); };
-        out.oncancel = () => { clearTimeout(safety); cleanup(); };
-      };
-      fly.oncancel = () => { clearTimeout(safety); cleanup(); };
+      // CSS transitions, NOT element.animate(): on Safari, YouTube loads its
+      // web-animations polyfill, which hijacks animate() in the page context
+      // and completes instantly — both flies teleported there. Transitions
+      // can't be hijacked.
+      clone.style.transformOrigin = 'top left';
+      clone.style.transition = 'transform 380ms cubic-bezier(.22, .61, .36, 1)';
+      clone.getBoundingClientRect(); // commit start state before transitioning
+      clone.style.transform = 'translate(' + dx + 'px, ' + dy + 'px) scale(' + sx + ', ' + sy + ')';
+      clone.addEventListener('transitionend', function onFly(e) {
+        if (e.propertyName !== 'transform') return;
+        clone.removeEventListener('transitionend', onFly);
+        clone.style.transition = 'opacity 260ms ease-out';
+        clone.getBoundingClientRect();
+        clone.style.opacity = '0';
+        clone.addEventListener('transitionend', () => { clearTimeout(safety); cleanup(); }, { once: true });
+      });
     });
   };
 

@@ -296,6 +296,13 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     return true;
   }, { timeout: 8000 }).catch(() => {});
   await page.waitForSelector('.c, .rc, .row, #itube-stage', { timeout: 8000 }).catch(() => {});
+  // The watch meta reveals behind the `next` fetch (load skeleton, v4.6.0) —
+  // a blind settle can sample .watch-meta mid-skeleton and bake a collapsed
+  // height into the geometry baseline. Wait for the reveal signal the other
+  // watch checks already use.
+  if (pageName === 'watch') {
+    await page.waitForSelector('.watch-like-btn', { state: 'visible', timeout: 15000 }).catch(() => {});
+  }
   await page.waitForTimeout(500);
 
   // Layout and snapshot read passive page state, so they must run BEFORE
@@ -454,7 +461,18 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
 
   if (want('errors')) {
     const violations = [];
+    // WebKit-only noise that is not an app bug:
+    // - YouTube's OWN captions race (`this._player.getOption(...,'tracklist')`
+    //   before the module exists — ours is the optional-chained, try/caught
+    //   `getOption?.('captions','track')`).
+    // - Aborted fetches logged as "access control checks": WebKit prints this
+    //   for requests cancelled mid-flight (SponsorBlock's deliberate 5s abort,
+    //   YouTube's own streaming/telemetry requests killed by an SPA nav).
+    //   Scoped to those exact endpoints — a real CORS break in the InnerTube
+    //   calls Flyt depends on must still fail.
+    const NOT_OURS = /this\._player\.getOption|(?:googlevideo\.com\/videoplayback|sponsor\.ajay\.app|youtubei\/v1\/log_event|\/api\/stats\/)\S*.*due to access control checks/;
     for (const err of errors.pageErrors) {
+      if (NOT_OURS.test(err)) continue;
       violations.push({ check: 'no-page-errors', detail: err.split('\n')[0] });
     }
     for (const msg of errors.consoleErrors) {
