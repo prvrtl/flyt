@@ -1,0 +1,21 @@
+{
+  "name": "itube-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Layout/functional test pipeline for the Flyt userscript, plus the type check. Own package.json — the root repo has no build system and stays that way: tsc runs with noEmit, so the file the browser loads is the file in the repo.",
+  "type": "commonjs",
+  "scripts": {
+    "typecheck": "tsc -p ..",
+    "pretest": "npm run typecheck",
+    "test": "node run.js",
+    "test:update": "node run.js --update",
+    "test:visual": "node run.js --check=snapshot",
+    "test:selftest": "node run.js --selftest"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

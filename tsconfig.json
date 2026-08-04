@@ -1,0 +1,30 @@
+{
+  "//": [
+    "Type-checking only. There is no build step and there must not be one:",
+    "@updateURL/@downloadURL point every installed user at flyt.user.js in this",
+    "repo, so that file is the shipping artifact, not a source input. noEmit is",
+    "the whole point — tsc reads the same bytes the browser runs.",
+    "",
+    "strictNullChecks is off deliberately. This is DOM-heavy code where almost",
+    "every querySelector legitimately returns null and is guarded by shape, not",
+    "by a check tsc can see; turning it on buys hundreds of false positives and",
+    "none of the bugs this project actually has. What IS on catches the two",
+    "classes that have really bitten us: arithmetic on non-numbers (a stray",
+    "backtick once turned the whole 4000-line CSS template into NaN) and",
+    "block-scoped variables used before declaration (the bare-CSS trap)."
+  ],
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": []
+  },
+  "include": ["flyt.user.js", "types/**/*.d.ts"]
+}

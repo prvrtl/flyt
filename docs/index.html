@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flyt — YouTube, rebuilt</title>
+<meta name="description" content="A single-file userscript that replaces YouTube's interface. It renders its own UI from YouTube's data and borrows YouTube's player as a headless playback engine. Vanilla JS, no build step, no dependencies.">
+<link rel="canonical" href="https://prvrtl.github.io/flyt/">
+<meta name="color-scheme" content="dark light">
+<meta name="author" content="prvrtl">
+
+<meta property="og:site_name" content="Flyt">
+<meta property="og:title" content="Flyt — YouTube, rebuilt">
+<meta property="og:description" content="Renders its own UI from YouTube's data and uses YouTube's player as a headless playback engine. One file, vanilla JS, no dependencies.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://prvrtl.github.io/flyt/">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://prvrtl.github.io/flyt/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Flyt — YouTube, rebuilt.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Flyt — YouTube, rebuilt">
+<meta name="twitter:description" content="Renders its own UI from YouTube's data. One file, vanilla JS, no dependencies.">
+<meta name="twitter:image" content="https://prvrtl.github.io/flyt/og.png">
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%233ddb8f'/><stop offset='.48' stop-color='%2322c3c9'/><stop offset='1' stop-color='%234a8fe0'/></linearGradient></defs><rect width='64' height='64' rx='14' fill='url(%23g)'/><path d='M28 11.6v40.8l28-20.4z' fill='%23fff'/><rect x='5.6' y='17.2' width='15.6' height='7.2' rx='3.6' fill='%23fff'/><rect x='5.6' y='39.6' width='15.6' height='7.2' rx='3.6' fill='%23fff'/></svg>">
+<link rel="apple-touch-icon" href="og.png">
+<style>
+  :root {
+    --ink: #06070c;
+    --raised: #0e1119;
+    --text: #eef1f6;
+    --muted: #8b93a6;
+    --dim: #7b8296;
+    --accent: #22c3c9;
+    --accent-rgb: 34, 195, 201;
+    --grad: linear-gradient(135deg, #3ddb8f 0%, #22c3c9 48%, #4a8fe0 100%);
+    --on-accent: #04141c;
+    --edge: rgba(255, 255, 255, .16);
+    --hairline: rgba(34, 195, 201, .12);
+    --surface: rgba(34, 195, 201, .05);
+    --shadow: rgba(0, 0, 0, .7);
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --pad: clamp(20px, 5vw, 48px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ink: #f4f5f8;
+      --raised: #ffffff;
+      --text: #0f1218;
+      --muted: #5b6273;
+      --dim: #646b7d;
+      --accent: #126669;
+      --accent-rgb: 18, 102, 105;
+      --grad: linear-gradient(135deg, #1d6844 0%, #126669 48%, #305e93 100%);
+      --edge: rgba(0, 0, 0, .16);
+      --hairline: rgba(18, 102, 105, .2);
+      --shadow: rgba(15, 18, 24, .22);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font: 400 16px/1.6 -apple-system, system-ui, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font: 500 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 1px 6px;
+  }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 var(--pad); }
+
+  /* ---------- masthead ---------- */
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    background: color-mix(in srgb, var(--ink) 78%, transparent);
+    border-bottom: 1px solid var(--hairline);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .top { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--ink); }
+  }
+  .top .wrap { display: flex; align-items: center; gap: 14px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.02em; font-size: 17px; }
+  .tile {
+    width: 28px; height: 28px; border-radius: var(--r-sm);
+    background-image: var(--grad);
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .top nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; color: var(--muted); }
+  .top nav a { color: inherit; }
+  .top nav a:hover { color: var(--text); text-decoration: none; }
+  @media (max-width: 640px) { .top nav { display: none; } }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; overflow: hidden; padding: clamp(56px, 11vw, 116px) 0 clamp(36px, 6vw, 64px); }
+  .hero::before {
+    content: '';
+    position: absolute; inset: -40% -10% auto -10%; height: 520px;
+    background: radial-gradient(60% 60% at 50% 40%, rgba(var(--accent-rgb), .22), transparent 70%);
+    pointer-events: none;
+  }
+  .hero .wrap { position: relative; }
+  h1 {
+    margin: 0;
+    font-size: clamp(40px, 7.4vw, 76px);
+    line-height: 1.03;
+    letter-spacing: -.035em;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+  h1 .g {
+    background-image: var(--grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+  .lede {
+    margin: 22px 0 0;
+    max-width: 60ch;
+    font-size: clamp(17px, 2.1vw, 20px);
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 46px; padding: 0 22px; border-radius: 999px;
+    background-image: var(--grad); color: var(--on-accent);
+    font-weight: 600; font-size: 15px; border: none; cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.07); text-decoration: none; }
+  .btn-ghost {
+    display: inline-flex; align-items: center; height: 46px; padding: 0 20px;
+    border-radius: 999px; border: 1px solid var(--edge); color: var(--text);
+    font-weight: 500; font-size: 15px;
+  }
+  .btn-ghost:hover { background: var(--surface); text-decoration: none; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  .badge {
+    font-size: 12.5px; color: var(--muted);
+    border: 1px solid var(--hairline); border-radius: 999px; padding: 4px 11px;
+  }
+
+  /* ---------- shot ---------- */
+  .frame {
+    margin-top: clamp(36px, 6vw, 62px);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--edge);
+    box-shadow: 0 40px 90px -40px var(--shadow);
+    overflow: hidden;
+    background: var(--raised);
+    line-height: 0;
+  }
+  .frame img { width: 100%; height: auto; display: block; }
+
+  /* ---------- sections ---------- */
+  section { padding: clamp(52px, 8vw, 92px) 0; }
+  h2 {
+    margin: 0 0 10px;
+    font-size: clamp(26px, 3.6vw, 36px);
+    letter-spacing: -.025em;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+  .sub { margin: 0 0 34px; color: var(--muted); max-width: 62ch; text-wrap: pretty; }
+
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); }
+  .card {
+    border: 1px solid var(--hairline); border-radius: var(--r-md);
+    padding: 20px; background: var(--surface);
+  }
+  .card h3 { margin: 0 0 6px; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+
+  /* ---------- numbers ---------- */
+  .stats { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .stat { border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 22px; background: var(--surface); }
+  .stat b {
+    display: block; font-size: clamp(30px, 4.4vw, 42px); line-height: 1.05;
+    letter-spacing: -.03em; font-weight: 700;
+    background-image: var(--grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+  .stat span { display: block; margin-top: 8px; color: var(--muted); font-size: 13.5px; }
+
+  .tbl { width: 100%; overflow-x: auto; margin-top: 22px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 420px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--hairline); }
+  thead th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  tbody th { font-weight: 500; }
+  td.win { color: var(--accent); font-weight: 600; }
+  .note { margin-top: 16px; color: var(--dim); font-size: 13.5px; max-width: 70ch; }
+
+  /* ---------- gallery ---------- */
+  .shots { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  figure { margin: 0; }
+  figure img {
+    width: 100%; height: auto; display: block;
+    border-radius: var(--r-md); border: 1px solid var(--edge);
+    background: var(--raised);
+  }
+  figcaption { margin-top: 10px; color: var(--muted); font-size: 13.5px; }
+
+  /* ---------- install ---------- */
+  .cmd {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    border: 1px solid var(--edge); border-radius: var(--r-md);
+    padding: 12px 14px; background: var(--raised); margin-bottom: 26px;
+  }
+  .cmd code { flex: 1; min-width: 240px; border: none; background: none; padding: 0; word-break: break-all; }
+  .copy {
+    border: 1px solid var(--edge); background: none; color: var(--text);
+    border-radius: 999px; padding: 7px 15px; font-size: 13.5px; font-weight: 500; cursor: pointer;
+  }
+  .copy:hover { background: var(--surface); }
+  .steps { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .steps h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .steps ol { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; line-height: 1.65; }
+  .steps li + li { margin-top: 6px; }
+
+  .warn {
+    border: 1px solid var(--hairline); border-left: 3px solid var(--accent);
+    border-radius: var(--r-md); padding: 18px 20px; background: var(--surface);
+    color: var(--muted); font-size: 14.5px; line-height: 1.6;
+  }
+
+  footer { border-top: 1px solid var(--hairline); padding: 34px 0 52px; color: var(--dim); font-size: 13.5px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <span class="brand">
+      <span class="tile">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path fill="#fff" d="M7 2.9v10.2l7-5.1z"/>
+          <rect x="1.4" y="4.3" width="3.9" height="1.8" rx=".9" fill="#fff"/>
+          <rect x="1.4" y="9.9" width="3.9" height="1.8" rx=".9" fill="#fff"/>
+        </svg>
+      </span>
+      Flyt
+    </span>
+    <nav>
+      <a href="#why">Why</a>
+      <a href="#measured">Measured</a>
+      <a href="#screens">Screens</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/prvrtl/flyt">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <h1>YouTube,<br><span class="g">rebuilt.</span></h1>
+      <p class="lede">
+        Flyt throws away YouTube's page and renders its own from YouTube's data — then
+        borrows YouTube's player as a headless engine so video still just works.
+        One file. Vanilla JavaScript. No build step, no dependencies, no ads.
+      </p>
+      <div class="cta">
+        <a class="btn" href="https://raw.githubusercontent.com/prvrtl/flyt/main/flyt.user.js">
+          Install userscript
+        </a>
+        <a class="btn-ghost" href="https://github.com/prvrtl/flyt">Source on GitHub</a>
+      </div>
+      <div class="badges">
+        <span class="badge">Safari · Chrome · Edge · Firefox</span>
+        <span class="badge">GPL-3.0</span>
+        <span class="badge">Self-updating</span>
+        <span class="badge">Beta</span>
+      </div>
+
+      <div class="frame">
+        <img src="shots/watch-closed.webp" width="1440" height="900" alt="Flyt's watch page: the video centred, its title and channel above it, reactions and actions below, and an Up next rail on the right.">
+      </div>
+    </div>
+  </div>
+
+  <section id="why">
+    <div class="wrap">
+      <h2>Not a theme. A different application.</h2>
+      <p class="sub">
+        Restyling YouTube's own DOM has a ceiling — the layout, the components and the
+        player chrome stay YouTube's, and the result is YouTube in a costume. Flyt reads
+        the same JSON the site reads and draws its own interface from it.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <h3>Its own UI, end to end</h3>
+          <p>Zero <code>ytd-*</code> components are reused. Every control you see is Flyt's, drawn from <code>ytInitialData</code> and authenticated InnerTube calls.</p>
+        </div>
+        <div class="card">
+          <h3>YouTube's player, headless</h3>
+          <p>Streams are signature-protected, so the player stays — with its chrome never rendered and its <code>&lt;video&gt;</code> re-parented into Flyt's own stage.</p>
+        </div>
+        <div class="card">
+          <h3>The watch page fits</h3>
+          <p>Up next and Comments are tabs on one rail. Description and transcript open in place. Nothing makes you scroll to find it.</p>
+        </div>
+        <div class="card">
+          <h3>Quiet by default</h3>
+          <p>No ads, no end-screen takeover, no Shorts shelf. Sponsor segments skip via SponsorBlock if you want them to.</p>
+        </div>
+        <div class="card">
+          <h3>Yours to arrange</h3>
+          <p>Collapse the sidebar and the video takes the space. Pick an accent. Theater, mini-player, A–B repeat, frame export, audio-only.</p>
+        </div>
+        <div class="card">
+          <h3>One file, no build</h3>
+          <p>13,900 lines of vanilla JS you can read top to bottom. TypeScript checks it, but nothing compiles it — what ships is what runs.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="measured">
+    <div class="wrap">
+      <h2>Measured, not asserted.</h2>
+      <p class="sub">
+        The watch page, scrolled, logged out, in WebKit — median of three runs on one
+        machine. The harness loads stock YouTube and Flyt the same way and counts the
+        same frames.
+      </p>
+
+      <div class="stats">
+        <div class="stat"><b>−67%</b><span>DOM nodes on the page</span></div>
+        <div class="stat"><b>0</b><span>janky frames, of 149</span></div>
+        <div class="stat"><b>−35%</b><span>95th-percentile frame time</span></div>
+        <div class="stat"><b>0</b><span>runtime dependencies</span></div>
+      </div>
+
+      <div class="tbl">
+        <table>
+          <thead>
+            <tr><th scope="col">Watch page, scrolling</th><th scope="col">Stock</th><th scope="col">Flyt</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Janky frames (&gt;16.7 ms)</th><td>67 / 149</td><td class="win">0 / 149</td></tr>
+            <tr><th scope="row">Frame time, p95</th><td>23.0 ms</td><td class="win">15.0 ms</td></tr>
+            <tr><th scope="row">Worst frame</th><td>32.0 ms</td><td class="win">15.0 ms</td></tr>
+            <tr><th scope="row">DOM nodes, document</th><td>21,334</td><td class="win">7,121</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note">
+        Reproduce with <code>cd tests &amp;&amp; node bench.js</code>. Method, the figures
+        deliberately <em>not</em> claimed, and one diagnosis that turned out to be wrong
+        are written up in
+        <a href="https://github.com/prvrtl/flyt/blob/main/PERF.md">PERF.md</a>.
+      </p>
+    </div>
+  </section>
+
+  <section id="screens">
+    <div class="wrap">
+      <h2>What it looks like.</h2>
+      <p class="sub">Light and dark follow the system, or pin either. The accent is yours.</p>
+      <div class="shots">
+        <figure>
+          <img src="shots/watch-comments.webp" width="1440" height="900" loading="lazy" alt="Flyt's Comments tab in the watch-page rail, showing top-level comments with likes and reply counts.">
+          <figcaption>Comments share the rail with Up next — one tab away, never a scroll.</figcaption>
+        </figure>
+        <figure>
+          <img src="shots/watch-theater.webp" width="1440" height="900" loading="lazy" alt="Flyt's theater mode: the video fills nearly the whole viewport and everything else fades away.">
+          <figcaption>Theater mode gives the video the window.</figcaption>
+        </figure>
+        <figure>
+          <img src="shots/command-palette.webp" width="1440" height="900" loading="lazy" alt="Flyt's command palette open over a watch page, listing Settings, Home, Subscriptions, Following, Watch later, Playlists and History.">
+          <figcaption>⌘K goes anywhere without touching the mouse.</figcaption>
+        </figure>
+        <figure>
+          <img src="shots/settings.webp" width="1440" height="900" loading="lazy" alt="Flyt's settings panel with accent colour swatches, playback speed, autoplay, sponsor skipping, preferred quality and keyword filters.">
+          <figcaption>Accent, quality, autoplay, sponsor skipping, keyword muting.</figcaption>
+        </figure>
+        <figure>
+          <img src="shots/search-grid.webp" width="1440" height="900" loading="lazy" alt="Flyt's search results: a single-column list of results with thumbnails, titles, view counts and descriptions.">
+          <figcaption>Search and channels render from InnerTube, in Flyt's own layout.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <p class="sub">Flyt needs a userscript manager. Once installed it updates itself through <code>@updateURL</code>.</p>
+
+      <div class="cmd">
+        <code id="url">https://raw.githubusercontent.com/prvrtl/flyt/main/flyt.user.js</code>
+        <button class="copy" id="copy" type="button">Copy</button>
+      </div>
+
+      <div class="steps">
+        <div>
+          <h3>Safari · macOS &amp; iOS</h3>
+          <ol>
+            <li>Install <a href="https://apps.apple.com/app/userscripts/id1463298887">Userscripts</a> and enable it for youtube.com in Safari's extension settings.</li>
+            <li>Open the extension, set a scripts folder, and save the link above into it as a <code>.user.js</code> file.</li>
+          </ol>
+        </div>
+        <div>
+          <h3>Chrome · Edge · Firefox</h3>
+          <ol>
+            <li>Install <a href="https://www.tampermonkey.net/">Tampermonkey</a> or Violentmonkey.</li>
+            <li>Open the raw link — the manager offers to install it — then reload youtube.com.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="caveats">
+    <div class="wrap">
+      <h2>Before you install</h2>
+      <p class="warn">
+        Flyt is a beta hobby project built on undocumented payloads. YouTube changes those
+        without notice, and when it does something here will break — a feed will render
+        empty, or a control will stop responding. Turning Flyt off is one toggle in the
+        sidebar and gives you the original site back on reload. It is tested against the
+        live site in WebKit, because that is what its author uses; other engines get less
+        attention. Signed-in features act on your real account.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Flyt — GPL-3.0</span>
+    <a href="https://github.com/prvrtl/flyt">GitHub</a>
+    <a href="https://github.com/prvrtl/flyt/blob/main/ARCHITECTURE.md">Architecture</a>
+    <a href="https://github.com/prvrtl/flyt/blob/main/PERF.md">Performance</a>
+    <a href="https://github.com/prvrtl/flyt/issues">Issues</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('copy').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    try {
+      await navigator.clipboard.writeText(document.getElementById('url').textContent.trim());
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+    } catch (err) {
+      btn.textContent = 'Copy failed';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+    }
+  });
+</script>
+</body>
+</html>

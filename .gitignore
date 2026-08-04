@@ -1,0 +1,10 @@
+
+.claude/
+.ide/
+# Local-only working notes (not part of the published project)
+CLAUDE.md
+docs/script-split-analysis.md
+PLAN.md
+tests/.yt-profile/
+tests/artifacts/
+tests/node_modules/
